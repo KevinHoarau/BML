@@ -7,17 +7,17 @@ This is the implemention of the work presented in our paper:
 
 ## Installation
 
-```
-    python setup.py install
+```console
+$ python setup.py install
 ```
 
 ## Getting started
 
-Getting started with BML: https://readthedocs.org/BML/getting_started
+Getting started with BML: https://kevinhoarau.github.io/BML/#getting-started
 
 ## Documentation
 
-Documentation is available online: https://readthedocs.org/BML
+Documentation is available online: https://kevinhoarau.github.io/BML/
 
 ## References
 
