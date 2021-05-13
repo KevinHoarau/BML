@@ -102,7 +102,7 @@ data.plot(figsize=(10,10))
 
 Output:
 
-![features](http://readthedocs.org/bml/images/getting_started_features.png)
+![features](images/getting_started_features.png)
 
 ## Graph features extraction
 
@@ -171,7 +171,8 @@ data.plot(figsize=(5,5))
 ```
 
 Output:
-![features](http://readthedocs.org/bml/images/getting_started_googleroutes.png)
+
+![features](images/getting_started_googleroutes.png)
 
 # Data tranformation
 
