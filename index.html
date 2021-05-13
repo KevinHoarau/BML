@@ -1,0 +1,312 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1" />
+<meta name="generator" content="pdoc 0.9.2" />
+<title>BML API documentation</title>
+<meta name="description" content="BML is a BGP dataset generation tool that extracts the majority of known features in the literature,
+the internet topology and that allows the user …" />
+<link rel="preload stylesheet" as="style" href="https://cdnjs.cloudflare.com/ajax/libs/10up-sanitize.css/11.0.1/sanitize.min.css" integrity="sha256-PK9q560IAAa6WVRRh76LtCaI8pjTJ2z11v0miyNNjrs=" crossorigin>
+<link rel="preload stylesheet" as="style" href="https://cdnjs.cloudflare.com/ajax/libs/10up-sanitize.css/11.0.1/typography.min.css" integrity="sha256-7l/o7C8jubJiy74VsKTidCy1yBkRtiUGbVkYBylBqUg=" crossorigin>
+<link rel="stylesheet preload" as="style" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/10.1.1/styles/github.min.css" crossorigin>
+<style>:root{--highlight-color:#fe9}.flex{display:flex !important}body{line-height:1.5em}#content{padding:20px}#sidebar{padding:30px;overflow:hidden}#sidebar > *:last-child{margin-bottom:2cm}#lunr-search{width:100%;font-size:1em;padding:6px 9px 5px 9px;border:1px solid silver}.http-server-breadcrumbs{font-size:130%;margin:0 0 15px 0}#footer{font-size:.75em;padding:5px 30px;border-top:1px solid #ddd;text-align:right}#footer p{margin:0 0 0 1em;display:inline-block}#footer p:last-child{margin-right:30px}h1,h2,h3,h4,h5{font-weight:300}h1{font-size:2.5em;line-height:1.1em}h2{font-size:1.75em;margin:1em 0 .50em 0}h3{font-size:1.4em;margin:25px 0 10px 0}h4{margin:0;font-size:105%}h1:target,h2:target,h3:target,h4:target,h5:target,h6:target{background:var(--highlight-color);padding:.2em 0}a{color:#058;text-decoration:none;transition:color .3s ease-in-out}a:hover{color:#e82}.title code{font-weight:bold}h2[id^="header-"]{margin-top:2em}.ident{color:#900}pre code{background:#f8f8f8;font-size:.8em;line-height:1.4em}code{background:#f2f2f1;padding:1px 4px;overflow-wrap:break-word}h1 code{background:transparent}pre{background:#f8f8f8;border:0;border-top:1px solid #ccc;border-bottom:1px solid #ccc;margin:1em 0;padding:1ex}#http-server-module-list{display:flex;flex-flow:column}#http-server-module-list div{display:flex}#http-server-module-list dt{min-width:10%}#http-server-module-list p{margin-top:0}.toc ul,#index{list-style-type:none;margin:0;padding:0}#index code{background:transparent}#index h3{border-bottom:1px solid #ddd}#index ul{padding:0}#index h4{margin-top:.6em;font-weight:bold}@media (min-width:200ex){#index .two-column{column-count:2}}@media (min-width:300ex){#index .two-column{column-count:3}}dl{margin-bottom:2em}dl dl:last-child{margin-bottom:4em}dd{margin:0 0 1em 3em}#header-classes + dl > dd{margin-bottom:3em}dd dd{margin-left:2em}dd p{margin:10px 0}.name{background:#eee;font-weight:bold;font-size:.85em;padding:5px 10px;display:inline-block;min-width:40%}.name:hover{background:#e0e0e0}dt:target .name{background:var(--highlight-color)}.name > span:first-child{white-space:nowrap}.name.class > span:nth-child(2){margin-left:.4em}.inherited{color:#999;border-left:5px solid #eee;padding-left:1em}.inheritance em{font-style:normal;font-weight:bold}.desc h2{font-weight:400;font-size:1.25em}.desc h3{font-size:1em}.desc dt code{background:inherit}.source summary,.git-link-div{color:#666;text-align:right;font-weight:400;font-size:.8em;text-transform:uppercase}.source summary > *{white-space:nowrap;cursor:pointer}.git-link{color:inherit;margin-left:1em}.source pre{max-height:500px;overflow:auto;margin:0}.source pre code{font-size:12px;overflow:visible}.hlist{list-style:none}.hlist li{display:inline}.hlist li:after{content:',\2002'}.hlist li:last-child:after{content:none}.hlist .hlist{display:inline;padding-left:1em}img{max-width:100%}td{padding:0 .5em}.admonition{padding:.1em .5em;margin-bottom:1em}.admonition-title{font-weight:bold}.admonition.note,.admonition.info,.admonition.important{background:#aef}.admonition.todo,.admonition.versionadded,.admonition.tip,.admonition.hint{background:#dfd}.admonition.warning,.admonition.versionchanged,.admonition.deprecated{background:#fd4}.admonition.error,.admonition.danger,.admonition.caution{background:lightpink}</style>
+<style media="screen and (min-width: 700px)">@media screen and (min-width:700px){#sidebar{width:30%;height:100vh;overflow:auto;position:sticky;top:0}#content{width:70%;max-width:100ch;padding:3em 4em;border-left:1px solid #ddd}pre code{font-size:1em}.item .name{font-size:1em}main{display:flex;flex-direction:row-reverse;justify-content:flex-end}.toc ul ul,#index ul{padding-left:1.5em}.toc > ul > li{margin-top:.5em}}</style>
+<style media="print">@media print{#sidebar h1{page-break-before:always}.source{display:none}}@media print{*{background:transparent !important;color:#000 !important;box-shadow:none !important;text-shadow:none !important}a[href]:after{content:" (" attr(href) ")";font-size:90%}a[href][title]:after{content:none}abbr[title]:after{content:" (" attr(title) ")"}.ir a:after,a[href^="javascript:"]:after,a[href^="#"]:after{content:""}pre,blockquote{border:1px solid #999;page-break-inside:avoid}thead{display:table-header-group}tr,img{page-break-inside:avoid}img{max-width:100% !important}@page{margin:0.5cm}p,h2,h3{orphans:3;widows:3}h1,h2,h3,h4,h5,h6{page-break-after:avoid}}</style>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/10.1.1/highlight.min.js" integrity="sha256-Uv3H6lx7dJmRfRvH8TH6kJD1TSK1aFcwgx+mdg3epi8=" crossorigin></script>
+<script>window.addEventListener('DOMContentLoaded', () => hljs.initHighlighting())</script>
+</head>
+<body>
+<main>
+<article id="content">
+<header>
+<h1 class="title">Package <code>BML</code></h1>
+</header>
+<section id="section-intro">
+<p>BML is a BGP dataset generation tool that extracts the majority of known features in the literature,
+the internet topology and that allows the user to build specific features from BGP data.</p>
+<h1 id="getting-started">Getting started</h1>
+<p>In this getting started guide, we will implement the use case presented in the BML's paper:</p>
+<p>"BML: An Efficient and Versatile Tool for BGP Dataset Collection".</p>
+<h2 id="installation">Installation</h2>
+<pre><code class="language-console">$ git clone https://github.com/KevinHoarau/BML.git
+$ cd BML
+$ python setup.py install
+</code></pre>
+<h2 id="dataset">Dataset</h2>
+<p>Dataset definition and collection: </p>
+<ul>
+<li>
+<p><code>dataset.load()</code> takes as input a python <code>dict</code> that describes the collection parameters.</p>
+</li>
+<li>
+<p>The field <code>PeriodsOfInterests</code> takes a <code>list</code> of <code>dict</code> where each <code>dict</code> describes a sample in the dataset.</p>
+</li>
+</ul>
+<pre><code class="language-python">from BML.data import Dataset
+from BML import utils
+
+#################
+# Data collection
+
+folder = &quot;dataset/&quot;
+dataset = Dataset(folder)
+dataset.load({
+ &quot;PrimingPeriod&quot;: 10*60, # 10 hours of priming data
+ &quot;IpVersion&quot;: [4], # only IPv4 routes
+ &quot;Collectors&quot;: [&quot;rrc06&quot;], # rrc06: at Otemachi, Japan
+ &quot;PeriodsOfInterests&quot;: 
+  [{
+   &quot;name&quot;: &quot;GoogleLeak&quot;,
+   &quot;label&quot;: &quot;anomaly&quot;,
+   &quot;start_time&quot;: utils.getTimestamp(2017, 8, 25, 3, 0, 0),  # August 25, 2017, 3:00 UTC
+   &quot;end_time&quot;: utils.getTimestamp(2017, 8, 25, 4, 0, 0)  # August 25, 2017, 4:00 UTC
+  }]
+})
+
+# run the data collection
+utils.runJobs(dataset.getJobs(), folder+&quot;collect_jobs&quot;) 
+</code></pre>
+<p>When BML is collecting data for a sample, the progression is reported in a log file in the sample's folder.
+Then, we can monitor the progression using a bash command as:</p>
+<pre><code class="language-console">$ watch cat dataset/anomaly/GoogleLeak/log_collect_sample.log
+</code></pre>
+<p>If the dataset contains multiples samples, which is usually the case, the processing queue can be monitored using:</p>
+<pre><code class="language-console">$ watch -n 1 cat dataset/collect_jobs/queue.log
+</code></pre>
+<h2 id="statistical-features-extraction">Statistical features extraction</h2>
+<p>When the data has been collected, we can run our first data transformation.
+Here we will extract <a href="#statistical-features">BGP statistical features</a>.</p>
+<pre><code class="language-python">from BML.transform import DatasetTransformation
+
+# features extraction every minute
+datTran = DatasetTransformation(folder, &quot;BML.transform&quot;, &quot;Features&quot;)
+
+datTran.setParams({
+        &quot;global&quot;:{
+            &quot;Period&quot;: 1,
+        }
+    })
+
+# run the data transformation
+utils.runJobs(datTran.getJobs(), folder+&quot;transform_jobs&quot;) 
+</code></pre>
+<p>Again, the sample's transformation progression can be monitored using:</p>
+<pre><code class="language-console">$ watch cat dataset/anomaly/GoogleLeak/transform/Features/log_transform_sample.log
+</code></pre>
+<p>And the overall transformation progression can be monitored using:</p>
+<pre><code class="language-console">$ watch -n 1 cat dataset/transform_jobs/queue.log
+</code></pre>
+<p>By default, the output of the transformation is saved in a json file in the sample's folder.
+The default name for this file is: <code>{tranformation_name}_{period}.json</code>.</p>
+<p>The data can easily be loaded and vizualized in python:</p>
+<pre><code class="language-python">import pandas as pd 
+data = pd.read_json(folder+&quot;anomaly/GoogleLeak/transform/Features/Features_1.json&quot;)
+data.plot(figsize=(10,10))
+</code></pre>
+<p>Output:</p>
+<p><img alt="features" src="http://readthedocs.org/bml/images/getting_started_features.png"></p>
+<h2 id="graph-features-extraction">Graph features extraction</h2>
+<p>Similarly, we can extract <a href="#graph-features">BGP graph features</a>.</p>
+<pre><code class="language-python"># graph features extraction every minute
+datTran = DatasetTransformation(folder, &quot;BML.transform&quot;, &quot;GraphFeatures&quot;)
+
+datTran.setParams({
+        &quot;global&quot;:{
+            &quot;Period&quot;: 1,
+        }
+    })
+
+# run the data transformation
+utils.runJobs(datTran.getJobs(), folder+&quot;transform_jobs&quot;) 
+</code></pre>
+<h2 id="custom-data-transformation">Custom data transformation</h2>
+<p>BML offers <a href="#custom-data-transformation_1">base tranformation objects</a> than we can inherit to build a custom data tranformation.</p>
+<p>For this example, let's say that we want to compute the number of announcements received during an interval where the Google AS (AS 15169) is in the AS-PATH. </p>
+<p>We implement the data transformation in a file named <code>GoogleRoutes.py</code> :</p>
+<pre><code class="language-python">from BML.transform import BaseTransform
+
+class GoogleRoutes(BaseTransform):
+
+ computeRoutes = False
+
+ def transforms(self, index, routes, updates):
+  n = 0
+  for update in updates:
+    if update[&quot;type&quot;]=='A':
+      if &quot;15169&quot; in update[&quot;fields&quot;][&quot;as-path&quot;]:
+        n += 1
+  return(n)
+</code></pre>
+<p>Then, we can use it as any data tranformation:</p>
+<pre><code class="language-python"># custom data transformation every minute
+datTran = DatasetTransformation(folder, &quot;GoogleRoutes&quot;, &quot;GoogleRoutes&quot;)
+
+datTran.setParams({
+        &quot;global&quot;:{
+            &quot;Period&quot;: 1,
+        }
+    })
+
+# run the data transformation
+utils.runJobs(datTran.getJobs(), folder+&quot;transform_jobs&quot;) 
+</code></pre>
+<p>We can also load and vizualise the output as previously:</p>
+<pre><code class="language-python">import pandas as pd 
+data = pd.read_json(folder+&quot;anomaly/GoogleLeak/transform/GoogleRoutes/GoogleRoutes_1.json&quot;)
+data.plot(figsize=(5,5))
+</code></pre>
+<p>Output:
+<img alt="features" src="http://readthedocs.org/bml/images/getting_started_googleroutes.png"></p>
+<h1 id="data-tranformation">Data tranformation</h1>
+<h2 id="statistical-features">Statistical features</h2>
+<h2 id="graph-features">Graph features</h2>
+<h2 id="nodes-features">Nodes features</h2>
+<h2 id="bgp-graph">BGP graph</h2>
+<h2 id="hijack-label">Hijack label</h2>
+<h2 id="routes-features">Routes features</h2>
+<h1 id="custom-data-transformation_1">Custom data transformation</h1>
+<h2 id="basetransform">BaseTransform</h2>
+<h2 id="basetransformparallelized">BaseTransformParallelized</h2>
+<h1 id="command-line-interface-cli">Command Line Interface (CLI)</h1>
+<h2 id="run-jobs">Run jobs</h2>
+<h2 id="updates-dump">Updates dump</h2>
+<h2 id="routes-dump">Routes dump</h2>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">&#34;&#34;&#34;
+BML is a BGP dataset generation tool that extracts the majority of known features in the literature, 
+the internet topology and that allows the user to build specific features from BGP data.
+.. include:: ./documentation.md
+&#34;&#34;&#34;</code></pre>
+</details>
+</section>
+<section>
+<h2 class="section-title" id="header-submodules">Sub-modules</h2>
+<dl>
+<dt><code class="name"><a title="BML.data" href="data/index.html">BML.data</a></code></dt>
+<dd>
+<div class="desc"></div>
+</dd>
+<dt><code class="name"><a title="BML.scripts" href="scripts/index.html">BML.scripts</a></code></dt>
+<dd>
+<div class="desc"></div>
+</dd>
+<dt><code class="name"><a title="BML.transform" href="transform/index.html">BML.transform</a></code></dt>
+<dd>
+<div class="desc"></div>
+</dd>
+<dt><code class="name"><a title="BML.utils" href="utils/index.html">BML.utils</a></code></dt>
+<dd>
+<div class="desc"></div>
+</dd>
+</dl>
+</section>
+<section>
+</section>
+<section>
+</section>
+<section>
+</section>
+</article>
+<nav id="sidebar">
+<a href="" style="font-size:4em;color:#058">BML</a>
+<hr style="margin-top:30px;margin-bottom:30px;">
+<form>
+<input id="lunr-search" name="q" placeholder="🔎 Search ..." aria-label="Search"
+disabled minlength="2">
+</form>
+<link rel="preload stylesheet" as="style" href="https://cdnjs.cloudflare.com/ajax/libs/tingle/0.15.3/tingle.min.css" integrity="sha512-j1u8eUJ4f23xPPxwOrLUPQaCD2dwzNqqmDDcWS4deWsMv2ohLqmXXuP3hU7g8TyzbMSakP/mMqoNBYWj8AEIFg==" crossorigin>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/tingle/0.15.3/tingle.min.js" integrity="sha512-plGUER9JkeEWPPqQBE4sdLqBoQug5Ap+BCGMc7bJ8BXkm+VVj6QzkpBz5Yv2yPkkq+cqg9IpkBaGCas6uDbW8g==" crossorigin></script>
+<style>
+.modal-dialog iframe {
+width: 100vw;
+height: calc(100vh - 80px);
+}
+@media screen and (min-width: 700px) {
+.modal-dialog iframe {
+width: 70vw;
+height: 80vh;
+}
+}
+.modal-dialog .tingle-modal-box {width: auto;}
+.modal-dialog .tingle-modal-box__content {padding: 0;}
+</style>
+<script>
+const input = document.getElementById('lunr-search');
+input.disabled = false;
+input.form.addEventListener('submit', (ev) => {
+ev.preventDefault();
+const url = new URL(window.location);
+url.searchParams.set('q', input.value);
+history.replaceState({}, null, url.toString());
+search(input.value);
+});
+const query = new URL(window.location).searchParams.get('q');
+if (query)
+search(query);
+function search(query) {
+const url = '../doc-search.html#' + encodeURIComponent(query);
+new tingle.modal({
+cssClass: ['modal-dialog'],
+onClose: () => {
+const url = new URL(window.location);
+url.searchParams.delete('q');
+history.replaceState({}, null, url.toString());
+setTimeout(() => input.focus(), 100);
+}
+}).setContent('<iframe src="' + url + '"></iframe>').open();
+}
+</script>
+<h1>Index</h1>
+<div class="toc">
+<ul>
+<li><a href="#getting-started">Getting started</a><ul>
+<li><a href="#installation">Installation</a></li>
+<li><a href="#dataset">Dataset</a></li>
+<li><a href="#statistical-features-extraction">Statistical features extraction</a></li>
+<li><a href="#graph-features-extraction">Graph features extraction</a></li>
+<li><a href="#custom-data-transformation">Custom data transformation</a></li>
+</ul>
+</li>
+<li><a href="#data-tranformation">Data tranformation</a><ul>
+<li><a href="#statistical-features">Statistical features</a></li>
+<li><a href="#graph-features">Graph features</a></li>
+<li><a href="#nodes-features">Nodes features</a></li>
+<li><a href="#bgp-graph">BGP graph</a></li>
+<li><a href="#hijack-label">Hijack label</a></li>
+<li><a href="#routes-features">Routes features</a></li>
+</ul>
+</li>
+<li><a href="#custom-data-transformation_1">Custom data transformation</a><ul>
+<li><a href="#basetransform">BaseTransform</a></li>
+<li><a href="#basetransformparallelized">BaseTransformParallelized</a></li>
+</ul>
+</li>
+<li><a href="#command-line-interface-cli">Command Line Interface (CLI)</a><ul>
+<li><a href="#run-jobs">Run jobs</a></li>
+<li><a href="#updates-dump">Updates dump</a></li>
+<li><a href="#routes-dump">Routes dump</a></li>
+</ul>
+</li>
+</ul>
+</div>
+<ul id="index">
+<li><h3><a href="#header-submodules">Sub-modules</a></h3>
+<ul>
+<li><code><a title="BML.data" href="data/index.html">BML.data</a></code></li>
+<li><code><a title="BML.scripts" href="scripts/index.html">BML.scripts</a></code></li>
+<li><code><a title="BML.transform" href="transform/index.html">BML.transform</a></code></li>
+<li><code><a title="BML.utils" href="utils/index.html">BML.utils</a></code></li>
+</ul>
+</li>
+</ul>
+</nav>
+</main>
+<footer id="footer">
+<p>Generated by <a href="https://pdoc3.github.io/pdoc"><cite>pdoc</cite> 0.9.2</a>.</p>
+</footer>
+</body>
+</html>
