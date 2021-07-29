@@ -46,6 +46,7 @@ from sys import getsizeof
 class BaseTransform(Thread):
 
     computeRoutes = True
+    loadPrimingData = True
 
     def __init__(self):
 
@@ -99,8 +100,9 @@ class BaseTransform(Thread):
         priming_data_filepath = self.folder + os.sep + &#34;priming_data&#34; + os.sep + &#34;routes.json&#34;
         updates_filepath = self.folder + os.sep + &#34;data&#34; + os.sep + &#34;updates.csv&#34;
 
-        utils.printAndLog(&#34;Ungzip priming data&#34;, self.logFiles)
-        utils.ungzipFile(priming_data_filepath + &#34;.gz&#34;)
+        if(self.loadPrimingData):
+            utils.printAndLog(&#34;Ungzip priming data&#34;, self.logFiles)
+            utils.ungzipFile(priming_data_filepath + &#34;.gz&#34;)
 
         utils.printAndLog(&#34;Ungzip updates&#34;, self.logFiles)
         utils.ungzipFile(updates_filepath + &#34;.gz&#34;)
@@ -110,20 +112,22 @@ class BaseTransform(Thread):
 
         utils.printAndLog(&#34;Load priming data&#34;, self.logFiles)
 
-        self.prior_routes = json.load(open(priming_data_filepath))
-        for prefix in list(self.prior_routes.keys()):
+        self.prior_routes = {}
+        if(self.loadPrimingData):
+            self.prior_routes = json.load(open(priming_data_filepath))
+            for prefix in list(self.prior_routes.keys()):
 
-            network = ip.ip_network(prefix)
+                network = ip.ip_network(prefix)
 
-            if(network.version in self.params[&#34;IpVersion&#34;]):
-    
-                if(len(self.params[&#34;Collectors&#34;])&gt;0):
+                if(network.version in self.params[&#34;IpVersion&#34;]):
+        
+                    if(len(self.params[&#34;Collectors&#34;])&gt;0):
 
-                    for collector in list(self.prior_routes[prefix].keys()):
-                        if(not collector in self.params[&#34;Collectors&#34;]):
-                            self.prior_routes[prefix].pop(collector)
-            else:
-                self.prior_routes.pop(prefix)
+                        for collector in list(self.prior_routes[prefix].keys()):
+                            if(not collector in self.params[&#34;Collectors&#34;]):
+                                self.prior_routes[prefix].pop(collector)
+                else:
+                    self.prior_routes.pop(prefix)
 
     def init(self):
 
@@ -284,7 +288,8 @@ class BaseTransform(Thread):
         if(os.path.exists(self.updates_filepath+&#34;.gz&#34;)):
             os.remove(self.updates_filepath)
         if(os.path.exists(self.priming_data_filepath+&#34;.gz&#34;)):
-            os.remove(self.priming_data_filepath)
+            if(self.loadPrimingData):
+                os.remove(self.priming_data_filepath)
         
         self.finished = True
 
@@ -315,7 +320,8 @@ class BaseTransformParallelized(BaseTransform):
 
         for i in range(len(self.data)):
             if(i in self.data):
-                self.transformedData.append(self.data[i].copy())
+                self.transformedData.append(self.data[i])
+                #self.transformedData.append(self.data[i].copy())
                 del self.data[i]
 
     def runTransforms(self, data, index, routes, updates):
@@ -362,6 +368,7 @@ else to the thread.</p></div>
 <pre><code class="python">class BaseTransform(Thread):
 
     computeRoutes = True
+    loadPrimingData = True
 
     def __init__(self):
 
@@ -415,8 +422,9 @@ else to the thread.</p></div>
         priming_data_filepath = self.folder + os.sep + &#34;priming_data&#34; + os.sep + &#34;routes.json&#34;
         updates_filepath = self.folder + os.sep + &#34;data&#34; + os.sep + &#34;updates.csv&#34;
 
-        utils.printAndLog(&#34;Ungzip priming data&#34;, self.logFiles)
-        utils.ungzipFile(priming_data_filepath + &#34;.gz&#34;)
+        if(self.loadPrimingData):
+            utils.printAndLog(&#34;Ungzip priming data&#34;, self.logFiles)
+            utils.ungzipFile(priming_data_filepath + &#34;.gz&#34;)
 
         utils.printAndLog(&#34;Ungzip updates&#34;, self.logFiles)
         utils.ungzipFile(updates_filepath + &#34;.gz&#34;)
@@ -426,20 +434,22 @@ else to the thread.</p></div>
 
         utils.printAndLog(&#34;Load priming data&#34;, self.logFiles)
 
-        self.prior_routes = json.load(open(priming_data_filepath))
-        for prefix in list(self.prior_routes.keys()):
+        self.prior_routes = {}
+        if(self.loadPrimingData):
+            self.prior_routes = json.load(open(priming_data_filepath))
+            for prefix in list(self.prior_routes.keys()):
 
-            network = ip.ip_network(prefix)
+                network = ip.ip_network(prefix)
 
-            if(network.version in self.params[&#34;IpVersion&#34;]):
-    
-                if(len(self.params[&#34;Collectors&#34;])&gt;0):
+                if(network.version in self.params[&#34;IpVersion&#34;]):
+        
+                    if(len(self.params[&#34;Collectors&#34;])&gt;0):
 
-                    for collector in list(self.prior_routes[prefix].keys()):
-                        if(not collector in self.params[&#34;Collectors&#34;]):
-                            self.prior_routes[prefix].pop(collector)
-            else:
-                self.prior_routes.pop(prefix)
+                        for collector in list(self.prior_routes[prefix].keys()):
+                            if(not collector in self.params[&#34;Collectors&#34;]):
+                                self.prior_routes[prefix].pop(collector)
+                else:
+                    self.prior_routes.pop(prefix)
 
     def init(self):
 
@@ -600,7 +610,8 @@ else to the thread.</p></div>
         if(os.path.exists(self.updates_filepath+&#34;.gz&#34;)):
             os.remove(self.updates_filepath)
         if(os.path.exists(self.priming_data_filepath+&#34;.gz&#34;)):
-            os.remove(self.priming_data_filepath)
+            if(self.loadPrimingData):
+                os.remove(self.priming_data_filepath)
         
         self.finished = True</code></pre>
 </details>
@@ -617,6 +628,10 @@ else to the thread.</p></div>
 <h3>Class variables</h3>
 <dl>
 <dt id="BML.transform.base_transform.BaseTransform.computeRoutes"><code class="name">var <span class="ident">computeRoutes</span></code></dt>
+<dd>
+<div class="desc"></div>
+</dd>
+<dt id="BML.transform.base_transform.BaseTransform.loadPrimingData"><code class="name">var <span class="ident">loadPrimingData</span></code></dt>
 <dd>
 <div class="desc"></div>
 </dd>
@@ -871,8 +886,9 @@ else to the thread.</p></div>
     priming_data_filepath = self.folder + os.sep + &#34;priming_data&#34; + os.sep + &#34;routes.json&#34;
     updates_filepath = self.folder + os.sep + &#34;data&#34; + os.sep + &#34;updates.csv&#34;
 
-    utils.printAndLog(&#34;Ungzip priming data&#34;, self.logFiles)
-    utils.ungzipFile(priming_data_filepath + &#34;.gz&#34;)
+    if(self.loadPrimingData):
+        utils.printAndLog(&#34;Ungzip priming data&#34;, self.logFiles)
+        utils.ungzipFile(priming_data_filepath + &#34;.gz&#34;)
 
     utils.printAndLog(&#34;Ungzip updates&#34;, self.logFiles)
     utils.ungzipFile(updates_filepath + &#34;.gz&#34;)
@@ -882,20 +898,22 @@ else to the thread.</p></div>
 
     utils.printAndLog(&#34;Load priming data&#34;, self.logFiles)
 
-    self.prior_routes = json.load(open(priming_data_filepath))
-    for prefix in list(self.prior_routes.keys()):
+    self.prior_routes = {}
+    if(self.loadPrimingData):
+        self.prior_routes = json.load(open(priming_data_filepath))
+        for prefix in list(self.prior_routes.keys()):
 
-        network = ip.ip_network(prefix)
+            network = ip.ip_network(prefix)
 
-        if(network.version in self.params[&#34;IpVersion&#34;]):
+            if(network.version in self.params[&#34;IpVersion&#34;]):
+    
+                if(len(self.params[&#34;Collectors&#34;])&gt;0):
 
-            if(len(self.params[&#34;Collectors&#34;])&gt;0):
-
-                for collector in list(self.prior_routes[prefix].keys()):
-                    if(not collector in self.params[&#34;Collectors&#34;]):
-                        self.prior_routes[prefix].pop(collector)
-        else:
-            self.prior_routes.pop(prefix)</code></pre>
+                    for collector in list(self.prior_routes[prefix].keys()):
+                        if(not collector in self.params[&#34;Collectors&#34;]):
+                            self.prior_routes[prefix].pop(collector)
+            else:
+                self.prior_routes.pop(prefix)</code></pre>
 </details>
 </dd>
 <dt id="BML.transform.base_transform.BaseTransform.run"><code class="name flex">
@@ -924,7 +942,8 @@ from the args and kwargs arguments, respectively.</p></div>
     if(os.path.exists(self.updates_filepath+&#34;.gz&#34;)):
         os.remove(self.updates_filepath)
     if(os.path.exists(self.priming_data_filepath+&#34;.gz&#34;)):
-        os.remove(self.priming_data_filepath)
+        if(self.loadPrimingData):
+            os.remove(self.priming_data_filepath)
     
     self.finished = True</code></pre>
 </details>
@@ -1098,7 +1117,8 @@ else to the thread.</p></div>
 
         for i in range(len(self.data)):
             if(i in self.data):
-                self.transformedData.append(self.data[i].copy())
+                self.transformedData.append(self.data[i])
+                #self.transformedData.append(self.data[i].copy())
                 del self.data[i]
 
     def runTransforms(self, data, index, routes, updates):
@@ -1115,6 +1135,9 @@ else to the thread.</p></div>
 <h3>Subclasses</h3>
 <ul class="hlist">
 <li><a title="BML.transform.graph.Graph" href="graph.html#BML.transform.graph.Graph">Graph</a></li>
+<li><a title="BML.transform.graph.Graphv2" href="graph.html#BML.transform.graph.Graphv2">Graphv2</a></li>
+<li><a title="BML.transform.graph.WeightedGraph" href="graph.html#BML.transform.graph.WeightedGraph">WeightedGraph</a></li>
+<li><a title="BML.transform.hijackAnalyze.HijackAnalyze" href="hijackAnalyze.html#BML.transform.hijackAnalyze.HijackAnalyze">HijackAnalyze</a></li>
 <li><a title="BML.transform.hijackLabel.HijackLabel" href="hijackLabel.html#BML.transform.hijackLabel.HijackLabel">HijackLabel</a></li>
 </ul>
 <h3>Methods</h3>
@@ -1136,7 +1159,8 @@ else to the thread.</p></div>
 
     for i in range(len(self.data)):
         if(i in self.data):
-            self.transformedData.append(self.data[i].copy())
+            self.transformedData.append(self.data[i])
+            #self.transformedData.append(self.data[i].copy())
             del self.data[i]</code></pre>
 </details>
 </dd>
@@ -1272,6 +1296,7 @@ setTimeout(() => input.focus(), 100);
 <li><code><a title="BML.transform.base_transform.BaseTransform.getProgress" href="#BML.transform.base_transform.BaseTransform.getProgress">getProgress</a></code></li>
 <li><code><a title="BML.transform.base_transform.BaseTransform.init" href="#BML.transform.base_transform.BaseTransform.init">init</a></code></li>
 <li><code><a title="BML.transform.base_transform.BaseTransform.isRunning" href="#BML.transform.base_transform.BaseTransform.isRunning">isRunning</a></code></li>
+<li><code><a title="BML.transform.base_transform.BaseTransform.loadPrimingData" href="#BML.transform.base_transform.BaseTransform.loadPrimingData">loadPrimingData</a></code></li>
 <li><code><a title="BML.transform.base_transform.BaseTransform.parseUpdate" href="#BML.transform.base_transform.BaseTransform.parseUpdate">parseUpdate</a></code></li>
 <li><code><a title="BML.transform.base_transform.BaseTransform.postProcess" href="#BML.transform.base_transform.BaseTransform.postProcess">postProcess</a></code></li>
 <li><code><a title="BML.transform.base_transform.BaseTransform.preProcess" href="#BML.transform.base_transform.BaseTransform.preProcess">preProcess</a></code></li>

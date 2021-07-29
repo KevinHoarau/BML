@@ -105,7 +105,7 @@ def printProgress(pObject, logFiles):
         logFiles (TYPE): Description
     &#34;&#34;&#34;
     progressPrev = 0
-    while pObject.isRunning():
+    while pObject.isAlive():
         progress = pObject.getProgress()
         if((progress&lt;=10 and progress!=progressPrev) or progress-progressPrev&gt;=5):
             printAndLog(&#34;Progress: &#34;+ str(progress) + &#34;%&#34;, logFiles)
@@ -455,12 +455,60 @@ def runJobs(jobs, folder, nbProcess=1):
     
     printAndLog(&#34;Processing queue: started&#34;, logFiles)
     printAndLog(&#34;To monitor the execution run: watch -n 1 cat {}queue.log&#34;.format(folder), logFiles)
-    processingQueue.run(logFilePath= &#34;{}queue.log&#34;.format(folder))
+    #processingQueue.run(logFilePath= &#34;{}queue.log&#34;.format(folder))
+
+    from tqdm.auto import tqdm
+
+    bar = tqdm(total=len(jobs))
+    prev = 0
+    while(len(processingQueue.finish)&lt;len(jobs)):
+        processingQueue.runOnce()
+        val = len(processingQueue.finish)
+        if(val!=prev):
+            bar.update(val-prev)
+            prev=val
+
+        processingQueue.runLog(&#34;{}queue.log&#34;.format(folder))
+        processingQueue.waitUntilFree()
+            
+    processingQueue.run()
 
     printAndLog(&#34;Processing queue: finish&#34;, logFiles)
     printAndLog(&#34;Computation time: {}&#34;.format(timeFormat(time.time()-timeAtStart)), logFiles)
 
-    logFile.close()</code></pre>
+    logFile.close()
+
+
+def getTransform(folder, transform, name=None, period=2, gzip=False):
+    
+    data = {}
+    
+    excludedFolders = [&#39;transform_jobs&#39;, &#39;collect_jobs&#39;]
+    
+    filename = &#34;&#34;
+    if(name is None):
+        filename += transform + &#34;_&#34; + str(period)
+    else:
+        filename += name
+        
+    filename += &#34;.json&#34;
+    
+    if(gzip):
+         filename += &#34;.gz&#34;
+    
+    for label in os.listdir(folder):
+        if(label not in excludedFolders):
+            data[label] = {}
+            
+            for sample in os.listdir(folder+&#34;/&#34;+label):
+
+                if(sample not in [&#39;.ipynb_checkpoints&#39;]):
+                
+                    filepath = folder+&#34;/&#34;+label + &#34;/&#34; + sample +  &#34;/transform/&#34; + transform + &#34;/&#34; + filename
+                    
+                    data[label][sample] = json.load(open(filepath))
+                
+    return(data)</code></pre>
 </details>
 </section>
 <section>
@@ -605,6 +653,47 @@ If the the arg is missing, return None if the is arg is optional otherwise a Mis
         TYPE: Description
     &#34;&#34;&#34;
     return(int((datetime(y,m,d,h,mn,s) - datetime(1970, 1, 1)).total_seconds()))</code></pre>
+</details>
+</dd>
+<dt id="BML.utils.utils.getTransform"><code class="name flex">
+<span>def <span class="ident">getTransform</span></span>(<span>folder, transform, name=None, period=2, gzip=False)</span>
+</code></dt>
+<dd>
+<div class="desc"></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def getTransform(folder, transform, name=None, period=2, gzip=False):
+    
+    data = {}
+    
+    excludedFolders = [&#39;transform_jobs&#39;, &#39;collect_jobs&#39;]
+    
+    filename = &#34;&#34;
+    if(name is None):
+        filename += transform + &#34;_&#34; + str(period)
+    else:
+        filename += name
+        
+    filename += &#34;.json&#34;
+    
+    if(gzip):
+         filename += &#34;.gz&#34;
+    
+    for label in os.listdir(folder):
+        if(label not in excludedFolders):
+            data[label] = {}
+            
+            for sample in os.listdir(folder+&#34;/&#34;+label):
+
+                if(sample not in [&#39;.ipynb_checkpoints&#39;]):
+                
+                    filepath = folder+&#34;/&#34;+label + &#34;/&#34; + sample +  &#34;/transform/&#34; + transform + &#34;/&#34; + filename
+                    
+                    data[label][sample] = json.load(open(filepath))
+                
+    return(data)</code></pre>
 </details>
 </dd>
 <dt id="BML.utils.utils.gzipFile"><code class="name flex">
@@ -774,7 +863,7 @@ If the the arg is missing, return None if the is arg is optional otherwise a Mis
         logFiles (TYPE): Description
     &#34;&#34;&#34;
     progressPrev = 0
-    while pObject.isRunning():
+    while pObject.isAlive():
         progress = pObject.getProgress()
         if((progress&lt;=10 and progress!=progressPrev) or progress-progressPrev&gt;=5):
             printAndLog(&#34;Progress: &#34;+ str(progress) + &#34;%&#34;, logFiles)
@@ -818,7 +907,23 @@ If the the arg is missing, return None if the is arg is optional otherwise a Mis
     
     printAndLog(&#34;Processing queue: started&#34;, logFiles)
     printAndLog(&#34;To monitor the execution run: watch -n 1 cat {}queue.log&#34;.format(folder), logFiles)
-    processingQueue.run(logFilePath= &#34;{}queue.log&#34;.format(folder))
+    #processingQueue.run(logFilePath= &#34;{}queue.log&#34;.format(folder))
+
+    from tqdm.auto import tqdm
+
+    bar = tqdm(total=len(jobs))
+    prev = 0
+    while(len(processingQueue.finish)&lt;len(jobs)):
+        processingQueue.runOnce()
+        val = len(processingQueue.finish)
+        if(val!=prev):
+            bar.update(val-prev)
+            prev=val
+
+        processingQueue.runLog(&#34;{}queue.log&#34;.format(folder))
+        processingQueue.waitUntilFree()
+            
+    processingQueue.run()
 
     printAndLog(&#34;Processing queue: finish&#34;, logFiles)
     printAndLog(&#34;Computation time: {}&#34;.format(timeFormat(time.time()-timeAtStart)), logFiles)
@@ -1513,6 +1618,7 @@ setTimeout(() => input.focus(), 100);
 <li><code><a title="BML.utils.utils.getIndexList" href="#BML.utils.utils.getIndexList">getIndexList</a></code></li>
 <li><code><a title="BML.utils.utils.getIntArg" href="#BML.utils.utils.getIntArg">getIntArg</a></code></li>
 <li><code><a title="BML.utils.utils.getTimestamp" href="#BML.utils.utils.getTimestamp">getTimestamp</a></code></li>
+<li><code><a title="BML.utils.utils.getTransform" href="#BML.utils.utils.getTransform">getTransform</a></code></li>
 <li><code><a title="BML.utils.utils.gzipFile" href="#BML.utils.utils.gzipFile">gzipFile</a></code></li>
 <li><code><a title="BML.utils.utils.mkdirPath" href="#BML.utils.utils.mkdirPath">mkdirPath</a></code></li>
 <li><code><a title="BML.utils.utils.printAndLog" href="#BML.utils.utils.printAndLog">printAndLog</a></code></li>
