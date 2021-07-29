@@ -18,6 +18,7 @@ from sys import getsizeof
 class BaseTransform(Thread):
 
     computeRoutes = True
+    loadPrimingData = True
 
     def __init__(self):
 
@@ -71,8 +72,9 @@ class BaseTransform(Thread):
         priming_data_filepath = self.folder + os.sep + "priming_data" + os.sep + "routes.json"
         updates_filepath = self.folder + os.sep + "data" + os.sep + "updates.csv"
 
-        utils.printAndLog("Ungzip priming data", self.logFiles)
-        utils.ungzipFile(priming_data_filepath + ".gz")
+        if(self.loadPrimingData):
+            utils.printAndLog("Ungzip priming data", self.logFiles)
+            utils.ungzipFile(priming_data_filepath + ".gz")
 
         utils.printAndLog("Ungzip updates", self.logFiles)
         utils.ungzipFile(updates_filepath + ".gz")
@@ -82,20 +84,22 @@ class BaseTransform(Thread):
 
         utils.printAndLog("Load priming data", self.logFiles)
 
-        self.prior_routes = json.load(open(priming_data_filepath))
-        for prefix in list(self.prior_routes.keys()):
+        self.prior_routes = {}
+        if(self.loadPrimingData):
+            self.prior_routes = json.load(open(priming_data_filepath))
+            for prefix in list(self.prior_routes.keys()):
 
-            network = ip.ip_network(prefix)
+                network = ip.ip_network(prefix)
 
-            if(network.version in self.params["IpVersion"]):
-    
-                if(len(self.params["Collectors"])>0):
+                if(network.version in self.params["IpVersion"]):
+        
+                    if(len(self.params["Collectors"])>0):
 
-                    for collector in list(self.prior_routes[prefix].keys()):
-                        if(not collector in self.params["Collectors"]):
-                            self.prior_routes[prefix].pop(collector)
-            else:
-                self.prior_routes.pop(prefix)
+                        for collector in list(self.prior_routes[prefix].keys()):
+                            if(not collector in self.params["Collectors"]):
+                                self.prior_routes[prefix].pop(collector)
+                else:
+                    self.prior_routes.pop(prefix)
 
     def init(self):
 
@@ -256,7 +260,8 @@ class BaseTransform(Thread):
         if(os.path.exists(self.updates_filepath+".gz")):
             os.remove(self.updates_filepath)
         if(os.path.exists(self.priming_data_filepath+".gz")):
-            os.remove(self.priming_data_filepath)
+            if(self.loadPrimingData):
+                os.remove(self.priming_data_filepath)
         
         self.finished = True
 
@@ -287,7 +292,8 @@ class BaseTransformParallelized(BaseTransform):
 
         for i in range(len(self.data)):
             if(i in self.data):
-                self.transformedData.append(self.data[i].copy())
+                self.transformedData.append(self.data[i])
+                #self.transformedData.append(self.data[i].copy())
                 del self.data[i]
 
     def runTransforms(self, data, index, routes, updates):

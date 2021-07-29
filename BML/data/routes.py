@@ -140,6 +140,9 @@ class RoutesDump(Thread):
 
 	def buildRoutesDumpFromUpdates(self):
 
+		if(len(self.updates)==1):
+			return
+
 		headerLine = ""
 		firstLine = ""
 		lastLine = ""

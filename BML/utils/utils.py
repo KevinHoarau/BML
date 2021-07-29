@@ -76,7 +76,7 @@ def printProgress(pObject, logFiles):
         logFiles (TYPE): Description
     """
     progressPrev = 0
-    while pObject.isRunning():
+    while pObject.isAlive():
         progress = pObject.getProgress()
         if((progress<=10 and progress!=progressPrev) or progress-progressPrev>=5):
             printAndLog("Progress: "+ str(progress) + "%", logFiles)
@@ -426,9 +426,57 @@ def runJobs(jobs, folder, nbProcess=1):
     
     printAndLog("Processing queue: started", logFiles)
     printAndLog("To monitor the execution run: watch -n 1 cat {}queue.log".format(folder), logFiles)
-    processingQueue.run(logFilePath= "{}queue.log".format(folder))
+    #processingQueue.run(logFilePath= "{}queue.log".format(folder))
+
+    from tqdm.auto import tqdm
+
+    bar = tqdm(total=len(jobs))
+    prev = 0
+    while(len(processingQueue.finish)<len(jobs)):
+        processingQueue.runOnce()
+        val = len(processingQueue.finish)
+        if(val!=prev):
+            bar.update(val-prev)
+            prev=val
+
+        processingQueue.runLog("{}queue.log".format(folder))
+        processingQueue.waitUntilFree()
+            
+    processingQueue.run()
 
     printAndLog("Processing queue: finish", logFiles)
     printAndLog("Computation time: {}".format(timeFormat(time.time()-timeAtStart)), logFiles)
 
     logFile.close()
+
+
+def getTransform(folder, transform, name=None, period=2, gzip=False):
+    
+    data = {}
+    
+    excludedFolders = ['transform_jobs', 'collect_jobs']
+    
+    filename = ""
+    if(name is None):
+        filename += transform + "_" + str(period)
+    else:
+        filename += name
+        
+    filename += ".json"
+    
+    if(gzip):
+         filename += ".gz"
+    
+    for label in os.listdir(folder):
+        if(label not in excludedFolders):
+            data[label] = {}
+            
+            for sample in os.listdir(folder+"/"+label):
+
+                if(sample not in ['.ipynb_checkpoints']):
+                
+                    filepath = folder+"/"+label + "/" + sample +  "/transform/" + transform + "/" + filename
+                    
+                    data[label][sample] = json.load(open(filepath))
+                
+    return(data)
