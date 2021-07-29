@@ -30,39 +30,39 @@
 
 class HijackLabel(BaseTransformParallelized):
 
-        def __init__(self):
-                BaseTransformParallelized.__init__(self)
-                self.params[&#34;hijack&#34;] = None
+    def __init__(self):
+        BaseTransformParallelized.__init__(self)
+        self.params[&#34;hijack&#34;] = None
 
-        def transforms(self, index, routes, updates):
+    def transforms(self, index, routes, updates):
 
-                label = {&#34;Y&#34;:0}
+        label = {&#34;Y&#34;:0}
 
-                if(not self.params[&#34;hijack&#34;] is None):
+        if(not self.params[&#34;hijack&#34;] is None):
 
-                        hj_prefix = self.params[&#34;hijack&#34;][&#34;prefix&#34;]
-                        hj_type = self.params[&#34;hijack&#34;][&#34;type&#34;]
-                        hj_as = self.params[&#34;hijack&#34;][&#34;hijack_as&#34;]
+            hj_prefix = self.params[&#34;hijack&#34;][&#34;prefix&#34;]
+            hj_type = self.params[&#34;hijack&#34;][&#34;type&#34;]
+            hj_as = self.params[&#34;hijack&#34;][&#34;hijack_as&#34;]
 
-                        if(hj_prefix in routes):
-                                for collector in routes[hj_prefix].keys():
-                                        for peer in routes[hj_prefix][collector].keys():
+            if(hj_prefix in routes):
+                for collector in routes[hj_prefix].keys():
+                    for peer in routes[hj_prefix][collector].keys():
 
-                                                if(not routes[hj_prefix][collector][peer] is None):
+                        if(not routes[hj_prefix][collector][peer] is None):
 
-                                                        path = routes[hj_prefix][collector][peer].split(&#34; &#34;)
+                            path = routes[hj_prefix][collector][peer].split(&#34; &#34;)
 
-                                                        if(hj_type==&#34;origin_change&#34;):
+                            if(hj_type==&#34;origin_change&#34;):
 
-                                                                if(str(path[-1])==str(hj_as)):
-                                                                        label = {&#34;Y&#34;:1}
+                                if(str(path[-1])==str(hj_as)):
+                                    label = {&#34;Y&#34;:1}
 
-                                                        if(hj_type==&#34;forged_as_path&#34;):
+                            if(hj_type==&#34;forged_as_path&#34;):
 
-                                                                if(str(hj_as) in path):
-                                                                        label = {&#34;Y&#34;:1}
+                                if(str(hj_as) in path):
+                                    label = {&#34;Y&#34;:1}
 
-                return(label)</code></pre>
+        return(label)</code></pre>
 </details>
 </section>
 <section>
@@ -101,39 +101,39 @@ else to the thread.</p></div>
 </summary>
 <pre><code class="python">class HijackLabel(BaseTransformParallelized):
 
-        def __init__(self):
-                BaseTransformParallelized.__init__(self)
-                self.params[&#34;hijack&#34;] = None
+    def __init__(self):
+        BaseTransformParallelized.__init__(self)
+        self.params[&#34;hijack&#34;] = None
 
-        def transforms(self, index, routes, updates):
+    def transforms(self, index, routes, updates):
 
-                label = {&#34;Y&#34;:0}
+        label = {&#34;Y&#34;:0}
 
-                if(not self.params[&#34;hijack&#34;] is None):
+        if(not self.params[&#34;hijack&#34;] is None):
 
-                        hj_prefix = self.params[&#34;hijack&#34;][&#34;prefix&#34;]
-                        hj_type = self.params[&#34;hijack&#34;][&#34;type&#34;]
-                        hj_as = self.params[&#34;hijack&#34;][&#34;hijack_as&#34;]
+            hj_prefix = self.params[&#34;hijack&#34;][&#34;prefix&#34;]
+            hj_type = self.params[&#34;hijack&#34;][&#34;type&#34;]
+            hj_as = self.params[&#34;hijack&#34;][&#34;hijack_as&#34;]
 
-                        if(hj_prefix in routes):
-                                for collector in routes[hj_prefix].keys():
-                                        for peer in routes[hj_prefix][collector].keys():
+            if(hj_prefix in routes):
+                for collector in routes[hj_prefix].keys():
+                    for peer in routes[hj_prefix][collector].keys():
 
-                                                if(not routes[hj_prefix][collector][peer] is None):
+                        if(not routes[hj_prefix][collector][peer] is None):
 
-                                                        path = routes[hj_prefix][collector][peer].split(&#34; &#34;)
+                            path = routes[hj_prefix][collector][peer].split(&#34; &#34;)
 
-                                                        if(hj_type==&#34;origin_change&#34;):
+                            if(hj_type==&#34;origin_change&#34;):
 
-                                                                if(str(path[-1])==str(hj_as)):
-                                                                        label = {&#34;Y&#34;:1}
+                                if(str(path[-1])==str(hj_as)):
+                                    label = {&#34;Y&#34;:1}
 
-                                                        if(hj_type==&#34;forged_as_path&#34;):
+                            if(hj_type==&#34;forged_as_path&#34;):
 
-                                                                if(str(hj_as) in path):
-                                                                        label = {&#34;Y&#34;:1}
+                                if(str(hj_as) in path):
+                                    label = {&#34;Y&#34;:1}
 
-                return(label)</code></pre>
+        return(label)</code></pre>
 </details>
 <h3>Ancestors</h3>
 <ul class="hlist">
@@ -154,33 +154,33 @@ else to the thread.</p></div>
 </summary>
 <pre><code class="python">def transforms(self, index, routes, updates):
 
-        label = {&#34;Y&#34;:0}
+    label = {&#34;Y&#34;:0}
 
-        if(not self.params[&#34;hijack&#34;] is None):
+    if(not self.params[&#34;hijack&#34;] is None):
 
-                hj_prefix = self.params[&#34;hijack&#34;][&#34;prefix&#34;]
-                hj_type = self.params[&#34;hijack&#34;][&#34;type&#34;]
-                hj_as = self.params[&#34;hijack&#34;][&#34;hijack_as&#34;]
+        hj_prefix = self.params[&#34;hijack&#34;][&#34;prefix&#34;]
+        hj_type = self.params[&#34;hijack&#34;][&#34;type&#34;]
+        hj_as = self.params[&#34;hijack&#34;][&#34;hijack_as&#34;]
 
-                if(hj_prefix in routes):
-                        for collector in routes[hj_prefix].keys():
-                                for peer in routes[hj_prefix][collector].keys():
+        if(hj_prefix in routes):
+            for collector in routes[hj_prefix].keys():
+                for peer in routes[hj_prefix][collector].keys():
 
-                                        if(not routes[hj_prefix][collector][peer] is None):
+                    if(not routes[hj_prefix][collector][peer] is None):
 
-                                                path = routes[hj_prefix][collector][peer].split(&#34; &#34;)
+                        path = routes[hj_prefix][collector][peer].split(&#34; &#34;)
 
-                                                if(hj_type==&#34;origin_change&#34;):
+                        if(hj_type==&#34;origin_change&#34;):
 
-                                                        if(str(path[-1])==str(hj_as)):
-                                                                label = {&#34;Y&#34;:1}
+                            if(str(path[-1])==str(hj_as)):
+                                label = {&#34;Y&#34;:1}
 
-                                                if(hj_type==&#34;forged_as_path&#34;):
+                        if(hj_type==&#34;forged_as_path&#34;):
 
-                                                        if(str(hj_as) in path):
-                                                                label = {&#34;Y&#34;:1}
+                            if(str(hj_as) in path):
+                                label = {&#34;Y&#34;:1}
 
-        return(label)</code></pre>
+    return(label)</code></pre>
 </details>
 </dd>
 </dl>

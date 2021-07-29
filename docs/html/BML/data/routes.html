@@ -168,6 +168,9 @@ class RoutesDump(Thread):
 
         def buildRoutesDumpFromUpdates(self):
 
+                if(len(self.updates)==1):
+                        return
+
                 headerLine = &#34;&#34;
                 firstLine = &#34;&#34;
                 lastLine = &#34;&#34;
@@ -601,6 +604,9 @@ else to the thread.</p></div>
 
         def buildRoutesDumpFromUpdates(self):
 
+                if(len(self.updates)==1):
+                        return
+
                 headerLine = &#34;&#34;
                 firstLine = &#34;&#34;
                 lastLine = &#34;&#34;
@@ -786,6 +792,9 @@ else to the thread.</p></div>
 <span>Expand source code</span>
 </summary>
 <pre><code class="python">def buildRoutesDumpFromUpdates(self):
+
+        if(len(self.updates)==1):
+                return
 
         headerLine = &#34;&#34;
         firstLine = &#34;&#34;
