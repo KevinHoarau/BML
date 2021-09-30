@@ -36,6 +36,7 @@ class BaseTransform(Thread):
         self.params = {
             "Name": None,
             "Period": 5,
+            "NbSnapshots": None,
             "Collectors": [],
             "IpVersion": [4,6]
         }
@@ -126,9 +127,12 @@ class BaseTransform(Thread):
 
         self.startTime = int(firstUpdate[updatesHeader.index("time")])
         self.endTime = int(lastUpdate[updatesHeader.index("time")])
-
-        self.T = ceil((self.endTime-self.startTime)/60 /self.params["Period"]) + 1 # +1 because the first snapshot is at t=0
-
+        
+        if(self.params["NbSnapshots"]==None):
+            self.T = ceil((self.endTime-self.startTime)/60 /self.params["Period"]) + 1 # +1 because the first snapshot is at t=0
+        else:
+            self.T = self.params["NbSnapshots"]
+            
         self.end = c-1
 
 
@@ -153,6 +157,9 @@ class BaseTransform(Thread):
         t = 0
 
         for line in updates_file:
+
+            if(t == self.T):
+                break
 
             lineSplited = line[:-1].split(',')
 

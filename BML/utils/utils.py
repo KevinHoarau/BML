@@ -474,9 +474,11 @@ def getTransform(folder, transform, name=None, period=2, gzip=False):
             for sample in os.listdir(folder+"/"+label):
 
                 if(sample not in ['.ipynb_checkpoints']):
+
                 
                     filepath = folder+"/"+label + "/" + sample +  "/transform/" + transform + "/" + filename
                     
-                    data[label][sample] = json.load(open(filepath))
+                    if(os.path.exists(filepath)):
+                        data[label][sample] = json.load(open(filepath))
                 
     return(data)

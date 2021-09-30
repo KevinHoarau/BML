@@ -190,5 +190,6 @@ class GraphFeatures(Graph):
 
             features = removedExcludedFeatures(features, self.params["exclude_features"])
             results.update(computeFeatures(features, self.params["computation_times"], self.params["verbose"]))
+            #results.update(computeFeaturesParallelized(features, self.params["computation_times"], self.params["verbose"]))
         
         return(results)
