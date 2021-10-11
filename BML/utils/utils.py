@@ -76,7 +76,7 @@ def printProgress(pObject, logFiles):
         logFiles (TYPE): Description
     """
     progressPrev = 0
-    while pObject.isAlive():
+    while pObject.is_alive():
         progress = pObject.getProgress()
         if((progress<=10 and progress!=progressPrev) or progress-progressPrev>=5):
             printAndLog("Progress: "+ str(progress) + "%", logFiles)
