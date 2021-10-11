@@ -1,4 +1,4 @@
-from setuptools import setup
+from setuptools import setup, find_packages
 from setuptools.command.install import install
 import subprocess, os, sys
 
@@ -22,7 +22,7 @@ setup(
 	version='1.0',
 	author='Kevin Hoarau',
 	author_email='kevin.hoarau@univ-reunion.fr',
-	packages=['BML'],
+	packages=find_packages(),
 	description='BML: An Efficient and Versatile Tool for BGP Dataset Collection',
     cmdclass={
         'install': CustomInstallCommand,

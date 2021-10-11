@@ -25,7 +25,8 @@ def nx2nk(G):
 def dictKeys(d, keys):
     subD = {}
     for k in keys:
-        subD[k] = d[k]
+        if(k in d):
+            subD[k] = d[k]
     return(subD)
 
 def valuesDict(values, keys):
@@ -163,10 +164,6 @@ def local_efficiency(G, nodes):
     return(valuesDict(v, nodes))
 
 def average_shortest_path_length(G, nodes):
-    d = nx.single_source_shortest_path_length(G, n)
-    return(dictKeys(d,nodes))
-
-def average_shortest_path_length(G, nodes):
     def average_shortest_path_length_node(G, n):
         return(np.mean(list(nx.single_source_shortest_path_length(G,n).values())))
     v = [average_shortest_path_length_node(G, n) for n in nodes]
@@ -242,10 +239,15 @@ def computeFeaturesParallelized(features, nbProcess, computationTimes=False, ver
     
     return(r_copy)
 
-def removedExcludedFeatures(features, excluded):
-    for key in excluded:
-        if(key in features):
-            del features[key]
+def removedExcludedFeatures(features, excluded, included):
+    if(len(included)>0):
+        for key in list(features.keys()):
+            if(not key in included):
+                del features[key]
+    else:
+        for key in excluded:
+            if(key in features):
+                del features[key]
     return(features)
 
 
@@ -254,9 +256,10 @@ class NodesFeatures(Graph):
     def __init__(self):
         Graph.__init__(self)
         self.params["use_networkit"] = True
-        self.params["all_nodes"] = False
+        self.params["all_nodes"] = True
         self.params["nodes"] = None
-        self.params["exclude_features"] = ["load"] # Excluded by default, too slow
+        self.params["exclude_features"] = ["load"] # Excluded by default, too slow; ignored if include_features not empty
+        self.params["include_features"] = [] # all features by default
         self.params["computation_times"] = False
         self.params["verbose"] = False
     
@@ -296,7 +299,7 @@ class NodesFeatures(Graph):
             features["eccentricity"] = (eccentricity, G, nodes)
             features["average_shortest_path_length"] = (average_shortest_path_length, G, nodes)
 
-        features = removedExcludedFeatures(features, self.params["exclude_features"])
+        features = removedExcludedFeatures(features, self.params["exclude_features"], self.params["include_features"])
         results.update(computeFeaturesParallelized(features, self.params["nbProcess"], self.params["computation_times"], self.params["verbose"]))
 
         if(self.params["use_networkit"]):
@@ -313,7 +316,7 @@ class NodesFeatures(Graph):
             features["eccentricity"] = (eccentricity_nk, G, Gnk, nodes)
             features["average_shortest_path_length"] = (average_shortest_path_length_nk, G, Gnk, nodes)
 
-            features = removedExcludedFeatures(features, self.params["exclude_features"])
+            features = removedExcludedFeatures(features, self.params["exclude_features"], self.params["include_features"])
             results.update(computeFeatures(features, self.params["computation_times"], self.params["verbose"]))
         
         return(results)

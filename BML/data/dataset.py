@@ -101,6 +101,12 @@ class Dataset():
 		if("PrimingPeriod" in d.keys()):
 			self.setPrimingPeriod(d["PrimingPeriod"])
 
+		if("UseRibsPriming" in d.keys()):
+			self.useRibsPriming = d["UseRibsPriming"]
+
+		if("UseRibsData" in d.keys()):
+			self.useRibsData = d["UseRibsData"]
+
 	def loadFromFile(self, fpath):
 		self.load(json.load(open(fpath)))
 
