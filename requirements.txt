@@ -8,3 +8,4 @@ networkit
 decorator==4.3
 networkx>=2.4
 modin[ray]
+ipywidgets
