@@ -64,6 +64,7 @@ class BaseTransform(Thread):
         self.params = {
             &#34;Name&#34;: None,
             &#34;Period&#34;: 5,
+            &#34;NbSnapshots&#34;: None,
             &#34;Collectors&#34;: [],
             &#34;IpVersion&#34;: [4,6]
         }
@@ -154,9 +155,12 @@ class BaseTransform(Thread):
 
         self.startTime = int(firstUpdate[updatesHeader.index(&#34;time&#34;)])
         self.endTime = int(lastUpdate[updatesHeader.index(&#34;time&#34;)])
-
-        self.T = ceil((self.endTime-self.startTime)/60 /self.params[&#34;Period&#34;]) + 1 # +1 because the first snapshot is at t=0
-
+        
+        if(self.params[&#34;NbSnapshots&#34;]==None):
+            self.T = ceil((self.endTime-self.startTime)/60 /self.params[&#34;Period&#34;]) + 1 # +1 because the first snapshot is at t=0
+        else:
+            self.T = self.params[&#34;NbSnapshots&#34;]
+            
         self.end = c-1
 
 
@@ -181,6 +185,9 @@ class BaseTransform(Thread):
         t = 0
 
         for line in updates_file:
+
+            if(t == self.T):
+                break
 
             lineSplited = line[:-1].split(&#39;,&#39;)
 
@@ -386,6 +393,7 @@ else to the thread.</p></div>
         self.params = {
             &#34;Name&#34;: None,
             &#34;Period&#34;: 5,
+            &#34;NbSnapshots&#34;: None,
             &#34;Collectors&#34;: [],
             &#34;IpVersion&#34;: [4,6]
         }
@@ -476,9 +484,12 @@ else to the thread.</p></div>
 
         self.startTime = int(firstUpdate[updatesHeader.index(&#34;time&#34;)])
         self.endTime = int(lastUpdate[updatesHeader.index(&#34;time&#34;)])
-
-        self.T = ceil((self.endTime-self.startTime)/60 /self.params[&#34;Period&#34;]) + 1 # +1 because the first snapshot is at t=0
-
+        
+        if(self.params[&#34;NbSnapshots&#34;]==None):
+            self.T = ceil((self.endTime-self.startTime)/60 /self.params[&#34;Period&#34;]) + 1 # +1 because the first snapshot is at t=0
+        else:
+            self.T = self.params[&#34;NbSnapshots&#34;]
+            
         self.end = c-1
 
 
@@ -503,6 +514,9 @@ else to the thread.</p></div>
         t = 0
 
         for line in updates_file:
+
+            if(t == self.T):
+                break
 
             lineSplited = line[:-1].split(&#39;,&#39;)
 
@@ -666,6 +680,9 @@ else to the thread.</p></div>
 
     for line in updates_file:
 
+        if(t == self.T):
+            break
+
         lineSplited = line[:-1].split(&#39;,&#39;)
 
         if(c==0):
@@ -801,9 +818,12 @@ else to the thread.</p></div>
 
     self.startTime = int(firstUpdate[updatesHeader.index(&#34;time&#34;)])
     self.endTime = int(lastUpdate[updatesHeader.index(&#34;time&#34;)])
-
-    self.T = ceil((self.endTime-self.startTime)/60 /self.params[&#34;Period&#34;]) + 1 # +1 because the first snapshot is at t=0
-
+    
+    if(self.params[&#34;NbSnapshots&#34;]==None):
+        self.T = ceil((self.endTime-self.startTime)/60 /self.params[&#34;Period&#34;]) + 1 # +1 because the first snapshot is at t=0
+    else:
+        self.T = self.params[&#34;NbSnapshots&#34;]
+        
     self.end = c-1</code></pre>
 </details>
 </dd>

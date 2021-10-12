@@ -105,7 +105,7 @@ def printProgress(pObject, logFiles):
         logFiles (TYPE): Description
     &#34;&#34;&#34;
     progressPrev = 0
-    while pObject.isAlive():
+    while pObject.is_alive():
         progress = pObject.getProgress()
         if((progress&lt;=10 and progress!=progressPrev) or progress-progressPrev&gt;=5):
             printAndLog(&#34;Progress: &#34;+ str(progress) + &#34;%&#34;, logFiles)
@@ -503,10 +503,12 @@ def getTransform(folder, transform, name=None, period=2, gzip=False):
             for sample in os.listdir(folder+&#34;/&#34;+label):
 
                 if(sample not in [&#39;.ipynb_checkpoints&#39;]):
+
                 
                     filepath = folder+&#34;/&#34;+label + &#34;/&#34; + sample +  &#34;/transform/&#34; + transform + &#34;/&#34; + filename
                     
-                    data[label][sample] = json.load(open(filepath))
+                    if(os.path.exists(filepath)):
+                        data[label][sample] = json.load(open(filepath))
                 
     return(data)</code></pre>
 </details>
@@ -688,10 +690,12 @@ If the the arg is missing, return None if the is arg is optional otherwise a Mis
             for sample in os.listdir(folder+&#34;/&#34;+label):
 
                 if(sample not in [&#39;.ipynb_checkpoints&#39;]):
+
                 
                     filepath = folder+&#34;/&#34;+label + &#34;/&#34; + sample +  &#34;/transform/&#34; + transform + &#34;/&#34; + filename
                     
-                    data[label][sample] = json.load(open(filepath))
+                    if(os.path.exists(filepath)):
+                        data[label][sample] = json.load(open(filepath))
                 
     return(data)</code></pre>
 </details>
@@ -863,7 +867,7 @@ If the the arg is missing, return None if the is arg is optional otherwise a Mis
         logFiles (TYPE): Description
     &#34;&#34;&#34;
     progressPrev = 0
-    while pObject.isAlive():
+    while pObject.is_alive():
         progress = pObject.getProgress()
         if((progress&lt;=10 and progress!=progressPrev) or progress-progressPrev&gt;=5):
             printAndLog(&#34;Progress: &#34;+ str(progress) + &#34;%&#34;, logFiles)
