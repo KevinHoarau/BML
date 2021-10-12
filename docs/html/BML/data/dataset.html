@@ -129,6 +129,12 @@ class Dataset():
                 if(&#34;PrimingPeriod&#34; in d.keys()):
                         self.setPrimingPeriod(d[&#34;PrimingPeriod&#34;])
 
+                if(&#34;UseRibsPriming&#34; in d.keys()):
+                        self.useRibsPriming = d[&#34;UseRibsPriming&#34;]
+
+                if(&#34;UseRibsData&#34; in d.keys()):
+                        self.useRibsData = d[&#34;UseRibsData&#34;]
+
         def loadFromFile(self, fpath):
                 self.load(json.load(open(fpath)))
 
@@ -280,6 +286,12 @@ class Dataset():
                 if(&#34;PrimingPeriod&#34; in d.keys()):
                         self.setPrimingPeriod(d[&#34;PrimingPeriod&#34;])
 
+                if(&#34;UseRibsPriming&#34; in d.keys()):
+                        self.useRibsPriming = d[&#34;UseRibsPriming&#34;]
+
+                if(&#34;UseRibsData&#34; in d.keys()):
+                        self.useRibsData = d[&#34;UseRibsData&#34;]
+
         def loadFromFile(self, fpath):
                 self.load(json.load(open(fpath)))
 
@@ -358,7 +370,13 @@ class Dataset():
                 self.setPeriodsOfInterests(d[&#34;PeriodsOfInterests&#34;])
         
         if(&#34;PrimingPeriod&#34; in d.keys()):
-                self.setPrimingPeriod(d[&#34;PrimingPeriod&#34;])</code></pre>
+                self.setPrimingPeriod(d[&#34;PrimingPeriod&#34;])
+
+        if(&#34;UseRibsPriming&#34; in d.keys()):
+                self.useRibsPriming = d[&#34;UseRibsPriming&#34;]
+
+        if(&#34;UseRibsData&#34; in d.keys()):
+                self.useRibsData = d[&#34;UseRibsData&#34;]</code></pre>
 </details>
 </dd>
 <dt id="BML.data.dataset.Dataset.loadFromFile"><code class="name flex">

@@ -112,9 +112,10 @@ class GraphFeatures(Graph):
     def __init__(self):
         Graph.__init__(self)
         self.params[&#34;use_networkit&#34;] = True
-        self.params[&#34;all_nodes&#34;] = False
+        self.params[&#34;all_nodes&#34;] = True
         self.params[&#34;nodes&#34;] = None
-        self.params[&#34;exclude_features&#34;] = [&#34;load&#34;] # Excluded by default, too slow
+        self.params[&#34;exclude_features&#34;] = [&#34;load&#34;] # Excluded by default, too slow; ignored if include_features not empty
+        self.params[&#34;include_features&#34;] = [] # all features by default
         self.params[&#34;computation_times&#34;] = False
         self.params[&#34;verbose&#34;] = False
     
@@ -130,30 +131,10 @@ class GraphFeatures(Graph):
 
             nodes = G.nodes
 
+
         laplacian_eigenvalues = None
         adjacency_eigenvalues = None
         normalized_laplacian_eigenvalues = None
-        if(not &#34;effective_graph_resistance&#34; in self.params[&#34;exclude_features&#34;] or not &#34;nb_spanning_trees&#34; in self.params[&#34;exclude_features&#34;]):
-            if(self.params[&#34;verbose&#34;]):
-                print(&#34;Computing laplacian_eigenvalues&#34;)
-            s = time.time()
-            laplacian_eigenvalues = np.real(nx.laplacian_spectrum(G))
-            if(self.params[&#34;verbose&#34;]):
-                print(&#34;Finish laplacian_eigenvalues (%s)&#34; % (timeFormat(time.time()-s)))
-        if(not &#34;largest_eigenvalue&#34; in self.params[&#34;exclude_features&#34;] or not &#34;symmetry_ratio&#34; in self.params[&#34;exclude_features&#34;] or not &#34;natural_connectivity&#34; in self.params[&#34;exclude_features&#34;]):
-            if(self.params[&#34;verbose&#34;]):
-                print(&#34;Computing adjacency_eigenvalues&#34;)
-            s = time.time()
-            adjacency_eigenvalues = np.real(nx.adjacency_spectrum(G))
-            if(self.params[&#34;verbose&#34;]):
-                print(&#34;Finish adjacency_eigenvalues (%s)&#34; % (timeFormat(time.time()-s)))
-        if(not &#34;weighted_spectrum_3&#34; in self.params[&#34;exclude_features&#34;] or not &#34;weighted_spectrum_4&#34; in self.params[&#34;exclude_features&#34;]):
-            if(self.params[&#34;verbose&#34;]):
-                print(&#34;Computing normalized_laplacian_eigenvalues&#34;)
-            s = time.time()
-            normalized_laplacian_eigenvalues = np.real(nx.normalized_laplacian_spectrum(G))
-            if(self.params[&#34;verbose&#34;]):
-                print(&#34;Finish normalized_laplacian_eigenvalues (%s)&#34; % (timeFormat(time.time()-s)))
 
         results = {}
 
@@ -194,7 +175,30 @@ class GraphFeatures(Graph):
             features[&#34;eccentricity&#34;] = (avgNodes, eccentricity, G, nodes)
             features[&#34;average_shortest_path_length&#34;] = (avgNodes, average_shortest_path_length, G, nodes)
 
-        features = removedExcludedFeatures(features, self.params[&#34;exclude_features&#34;])
+        features = removedExcludedFeatures(features, self.params[&#34;exclude_features&#34;], self.params[&#34;include_features&#34;])
+
+        if(&#34;effective_graph_resistance&#34; in features or &#34;nb_spanning_trees&#34; in features):
+            if(self.params[&#34;verbose&#34;]):
+                print(&#34;Computing laplacian_eigenvalues&#34;)
+            s = time.time()
+            laplacian_eigenvalues = np.real(nx.laplacian_spectrum(G))
+            if(self.params[&#34;verbose&#34;]):
+                print(&#34;Finish laplacian_eigenvalues (%s)&#34; % (timeFormat(time.time()-s)))
+        if(&#34;largest_eigenvalue&#34; in features or &#34;symmetry_ratio&#34; in features or &#34;natural_connectivity&#34; in features):
+            if(self.params[&#34;verbose&#34;]):
+                print(&#34;Computing adjacency_eigenvalues&#34;)
+            s = time.time()
+            adjacency_eigenvalues = np.real(nx.adjacency_spectrum(G))
+            if(self.params[&#34;verbose&#34;]):
+                print(&#34;Finish adjacency_eigenvalues (%s)&#34; % (timeFormat(time.time()-s)))
+        if(&#34;weighted_spectrum_3&#34; in features or &#34;weighted_spectrum_4&#34; in features):
+            if(self.params[&#34;verbose&#34;]):
+                print(&#34;Computing normalized_laplacian_eigenvalues&#34;)
+            s = time.time()
+            normalized_laplacian_eigenvalues = np.real(nx.normalized_laplacian_spectrum(G))
+            if(self.params[&#34;verbose&#34;]):
+                print(&#34;Finish normalized_laplacian_eigenvalues (%s)&#34; % (timeFormat(time.time()-s)))
+
         results.update(computeFeaturesParallelized(features, self.params[&#34;nbProcess&#34;], self.params[&#34;computation_times&#34;], self.params[&#34;verbose&#34;]))
 
         del laplacian_eigenvalues
@@ -216,8 +220,9 @@ class GraphFeatures(Graph):
             features[&#34;eccentricity&#34;] = (avgNodes, eccentricity_nk, G, Gnk, nodes)
             features[&#34;average_shortest_path_length&#34;] = (avgNodes, average_shortest_path_length_nk, G, Gnk, nodes)
 
-            features = removedExcludedFeatures(features, self.params[&#34;exclude_features&#34;])
+            features = removedExcludedFeatures(features, self.params[&#34;exclude_features&#34;], self.params[&#34;include_features&#34;])
             results.update(computeFeatures(features, self.params[&#34;computation_times&#34;], self.params[&#34;verbose&#34;]))
+            #results.update(computeFeaturesParallelized(features, self.params[&#34;computation_times&#34;], self.params[&#34;verbose&#34;]))
         
         return(results)</code></pre>
 </details>
@@ -484,9 +489,10 @@ else to the thread.</p></div>
     def __init__(self):
         Graph.__init__(self)
         self.params[&#34;use_networkit&#34;] = True
-        self.params[&#34;all_nodes&#34;] = False
+        self.params[&#34;all_nodes&#34;] = True
         self.params[&#34;nodes&#34;] = None
-        self.params[&#34;exclude_features&#34;] = [&#34;load&#34;] # Excluded by default, too slow
+        self.params[&#34;exclude_features&#34;] = [&#34;load&#34;] # Excluded by default, too slow; ignored if include_features not empty
+        self.params[&#34;include_features&#34;] = [] # all features by default
         self.params[&#34;computation_times&#34;] = False
         self.params[&#34;verbose&#34;] = False
     
@@ -502,30 +508,10 @@ else to the thread.</p></div>
 
             nodes = G.nodes
 
+
         laplacian_eigenvalues = None
         adjacency_eigenvalues = None
         normalized_laplacian_eigenvalues = None
-        if(not &#34;effective_graph_resistance&#34; in self.params[&#34;exclude_features&#34;] or not &#34;nb_spanning_trees&#34; in self.params[&#34;exclude_features&#34;]):
-            if(self.params[&#34;verbose&#34;]):
-                print(&#34;Computing laplacian_eigenvalues&#34;)
-            s = time.time()
-            laplacian_eigenvalues = np.real(nx.laplacian_spectrum(G))
-            if(self.params[&#34;verbose&#34;]):
-                print(&#34;Finish laplacian_eigenvalues (%s)&#34; % (timeFormat(time.time()-s)))
-        if(not &#34;largest_eigenvalue&#34; in self.params[&#34;exclude_features&#34;] or not &#34;symmetry_ratio&#34; in self.params[&#34;exclude_features&#34;] or not &#34;natural_connectivity&#34; in self.params[&#34;exclude_features&#34;]):
-            if(self.params[&#34;verbose&#34;]):
-                print(&#34;Computing adjacency_eigenvalues&#34;)
-            s = time.time()
-            adjacency_eigenvalues = np.real(nx.adjacency_spectrum(G))
-            if(self.params[&#34;verbose&#34;]):
-                print(&#34;Finish adjacency_eigenvalues (%s)&#34; % (timeFormat(time.time()-s)))
-        if(not &#34;weighted_spectrum_3&#34; in self.params[&#34;exclude_features&#34;] or not &#34;weighted_spectrum_4&#34; in self.params[&#34;exclude_features&#34;]):
-            if(self.params[&#34;verbose&#34;]):
-                print(&#34;Computing normalized_laplacian_eigenvalues&#34;)
-            s = time.time()
-            normalized_laplacian_eigenvalues = np.real(nx.normalized_laplacian_spectrum(G))
-            if(self.params[&#34;verbose&#34;]):
-                print(&#34;Finish normalized_laplacian_eigenvalues (%s)&#34; % (timeFormat(time.time()-s)))
 
         results = {}
 
@@ -566,7 +552,30 @@ else to the thread.</p></div>
             features[&#34;eccentricity&#34;] = (avgNodes, eccentricity, G, nodes)
             features[&#34;average_shortest_path_length&#34;] = (avgNodes, average_shortest_path_length, G, nodes)
 
-        features = removedExcludedFeatures(features, self.params[&#34;exclude_features&#34;])
+        features = removedExcludedFeatures(features, self.params[&#34;exclude_features&#34;], self.params[&#34;include_features&#34;])
+
+        if(&#34;effective_graph_resistance&#34; in features or &#34;nb_spanning_trees&#34; in features):
+            if(self.params[&#34;verbose&#34;]):
+                print(&#34;Computing laplacian_eigenvalues&#34;)
+            s = time.time()
+            laplacian_eigenvalues = np.real(nx.laplacian_spectrum(G))
+            if(self.params[&#34;verbose&#34;]):
+                print(&#34;Finish laplacian_eigenvalues (%s)&#34; % (timeFormat(time.time()-s)))
+        if(&#34;largest_eigenvalue&#34; in features or &#34;symmetry_ratio&#34; in features or &#34;natural_connectivity&#34; in features):
+            if(self.params[&#34;verbose&#34;]):
+                print(&#34;Computing adjacency_eigenvalues&#34;)
+            s = time.time()
+            adjacency_eigenvalues = np.real(nx.adjacency_spectrum(G))
+            if(self.params[&#34;verbose&#34;]):
+                print(&#34;Finish adjacency_eigenvalues (%s)&#34; % (timeFormat(time.time()-s)))
+        if(&#34;weighted_spectrum_3&#34; in features or &#34;weighted_spectrum_4&#34; in features):
+            if(self.params[&#34;verbose&#34;]):
+                print(&#34;Computing normalized_laplacian_eigenvalues&#34;)
+            s = time.time()
+            normalized_laplacian_eigenvalues = np.real(nx.normalized_laplacian_spectrum(G))
+            if(self.params[&#34;verbose&#34;]):
+                print(&#34;Finish normalized_laplacian_eigenvalues (%s)&#34; % (timeFormat(time.time()-s)))
+
         results.update(computeFeaturesParallelized(features, self.params[&#34;nbProcess&#34;], self.params[&#34;computation_times&#34;], self.params[&#34;verbose&#34;]))
 
         del laplacian_eigenvalues
@@ -588,8 +597,9 @@ else to the thread.</p></div>
             features[&#34;eccentricity&#34;] = (avgNodes, eccentricity_nk, G, Gnk, nodes)
             features[&#34;average_shortest_path_length&#34;] = (avgNodes, average_shortest_path_length_nk, G, Gnk, nodes)
 
-            features = removedExcludedFeatures(features, self.params[&#34;exclude_features&#34;])
+            features = removedExcludedFeatures(features, self.params[&#34;exclude_features&#34;], self.params[&#34;include_features&#34;])
             results.update(computeFeatures(features, self.params[&#34;computation_times&#34;], self.params[&#34;verbose&#34;]))
+            #results.update(computeFeaturesParallelized(features, self.params[&#34;computation_times&#34;], self.params[&#34;verbose&#34;]))
         
         return(results)</code></pre>
 </details>
@@ -623,30 +633,10 @@ else to the thread.</p></div>
 
         nodes = G.nodes
 
+
     laplacian_eigenvalues = None
     adjacency_eigenvalues = None
     normalized_laplacian_eigenvalues = None
-    if(not &#34;effective_graph_resistance&#34; in self.params[&#34;exclude_features&#34;] or not &#34;nb_spanning_trees&#34; in self.params[&#34;exclude_features&#34;]):
-        if(self.params[&#34;verbose&#34;]):
-            print(&#34;Computing laplacian_eigenvalues&#34;)
-        s = time.time()
-        laplacian_eigenvalues = np.real(nx.laplacian_spectrum(G))
-        if(self.params[&#34;verbose&#34;]):
-            print(&#34;Finish laplacian_eigenvalues (%s)&#34; % (timeFormat(time.time()-s)))
-    if(not &#34;largest_eigenvalue&#34; in self.params[&#34;exclude_features&#34;] or not &#34;symmetry_ratio&#34; in self.params[&#34;exclude_features&#34;] or not &#34;natural_connectivity&#34; in self.params[&#34;exclude_features&#34;]):
-        if(self.params[&#34;verbose&#34;]):
-            print(&#34;Computing adjacency_eigenvalues&#34;)
-        s = time.time()
-        adjacency_eigenvalues = np.real(nx.adjacency_spectrum(G))
-        if(self.params[&#34;verbose&#34;]):
-            print(&#34;Finish adjacency_eigenvalues (%s)&#34; % (timeFormat(time.time()-s)))
-    if(not &#34;weighted_spectrum_3&#34; in self.params[&#34;exclude_features&#34;] or not &#34;weighted_spectrum_4&#34; in self.params[&#34;exclude_features&#34;]):
-        if(self.params[&#34;verbose&#34;]):
-            print(&#34;Computing normalized_laplacian_eigenvalues&#34;)
-        s = time.time()
-        normalized_laplacian_eigenvalues = np.real(nx.normalized_laplacian_spectrum(G))
-        if(self.params[&#34;verbose&#34;]):
-            print(&#34;Finish normalized_laplacian_eigenvalues (%s)&#34; % (timeFormat(time.time()-s)))
 
     results = {}
 
@@ -687,7 +677,30 @@ else to the thread.</p></div>
         features[&#34;eccentricity&#34;] = (avgNodes, eccentricity, G, nodes)
         features[&#34;average_shortest_path_length&#34;] = (avgNodes, average_shortest_path_length, G, nodes)
 
-    features = removedExcludedFeatures(features, self.params[&#34;exclude_features&#34;])
+    features = removedExcludedFeatures(features, self.params[&#34;exclude_features&#34;], self.params[&#34;include_features&#34;])
+
+    if(&#34;effective_graph_resistance&#34; in features or &#34;nb_spanning_trees&#34; in features):
+        if(self.params[&#34;verbose&#34;]):
+            print(&#34;Computing laplacian_eigenvalues&#34;)
+        s = time.time()
+        laplacian_eigenvalues = np.real(nx.laplacian_spectrum(G))
+        if(self.params[&#34;verbose&#34;]):
+            print(&#34;Finish laplacian_eigenvalues (%s)&#34; % (timeFormat(time.time()-s)))
+    if(&#34;largest_eigenvalue&#34; in features or &#34;symmetry_ratio&#34; in features or &#34;natural_connectivity&#34; in features):
+        if(self.params[&#34;verbose&#34;]):
+            print(&#34;Computing adjacency_eigenvalues&#34;)
+        s = time.time()
+        adjacency_eigenvalues = np.real(nx.adjacency_spectrum(G))
+        if(self.params[&#34;verbose&#34;]):
+            print(&#34;Finish adjacency_eigenvalues (%s)&#34; % (timeFormat(time.time()-s)))
+    if(&#34;weighted_spectrum_3&#34; in features or &#34;weighted_spectrum_4&#34; in features):
+        if(self.params[&#34;verbose&#34;]):
+            print(&#34;Computing normalized_laplacian_eigenvalues&#34;)
+        s = time.time()
+        normalized_laplacian_eigenvalues = np.real(nx.normalized_laplacian_spectrum(G))
+        if(self.params[&#34;verbose&#34;]):
+            print(&#34;Finish normalized_laplacian_eigenvalues (%s)&#34; % (timeFormat(time.time()-s)))
+
     results.update(computeFeaturesParallelized(features, self.params[&#34;nbProcess&#34;], self.params[&#34;computation_times&#34;], self.params[&#34;verbose&#34;]))
 
     del laplacian_eigenvalues
@@ -709,8 +722,9 @@ else to the thread.</p></div>
         features[&#34;eccentricity&#34;] = (avgNodes, eccentricity_nk, G, Gnk, nodes)
         features[&#34;average_shortest_path_length&#34;] = (avgNodes, average_shortest_path_length_nk, G, Gnk, nodes)
 
-        features = removedExcludedFeatures(features, self.params[&#34;exclude_features&#34;])
+        features = removedExcludedFeatures(features, self.params[&#34;exclude_features&#34;], self.params[&#34;include_features&#34;])
         results.update(computeFeatures(features, self.params[&#34;computation_times&#34;], self.params[&#34;verbose&#34;]))
+        #results.update(computeFeaturesParallelized(features, self.params[&#34;computation_times&#34;], self.params[&#34;verbose&#34;]))
     
     return(results)</code></pre>
 </details>
