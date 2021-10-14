@@ -1,4 +1,4 @@
-from BML.transform.graph import Graph
+from BML.transform import Graph, BaseTransform
 from BML.utils import ProcessingQueue, timeFormat
 import multiprocessing
 
@@ -184,7 +184,7 @@ def connectivity(G, nodes): # too slow, see approx version
         v.append(np.mean([nx.connectivity.local_node_connectivity(G,n,t) for t in nodes]))
     return(valuesDict(v, nodes))
 
-def computeFeatures(features, computationTimes=False, verbose=False):
+def computeFeatures(features, verbose=False):
     
     results = {}
     times = {}
@@ -195,37 +195,31 @@ def computeFeatures(features, computationTimes=False, verbose=False):
             print("Start:%s" % (key))
         s = time.time()
         results[key] = function(*args)
-        times[key] = time.time() - s
         if(verbose):
-            print("End:%s (%s)" % (key, timeFormat(times[key])))
-
-    if(computationTimes):
-        results["computation_times"] = times
+            print("End:%s (%s)" % (key, timeFormat(time.time()-s)))
     
     return(results)
 
 
-def run(function, results, times, key, verbose,*args):
+def run(function, results, key, verbose,*args):
     if(verbose):
         print("Start:%s" % (key))
     s = time.time()
     results[key] = function(*args)
-    times[key] = time.time() - s
     if(verbose):
-        print("End:%s (%s)" % (key, timeFormat(times[key])))
+        print("End:%s (%s)" % (key, timeFormat(time.time()-s)))
     
 
-def computeFeaturesParallelized(features, nbProcess, computationTimes=False, verbose=False):
+def computeFeaturesParallelized(features, nbProcess, verbose=False):
     
     manager = multiprocessing.Manager()
     results = manager.dict()
-    times = manager.dict()
     
     pq = ProcessingQueue(nbProcess=nbProcess)
     
     for key, value in features.items():
         function, *args = value
-        pq.addProcess(target=run, args=(function, results, times, key, verbose,*args))
+        pq.addProcess(target=run, args=(function, results, key, verbose,*args))
     
     pq.run()
     
@@ -233,9 +227,6 @@ def computeFeaturesParallelized(features, nbProcess, computationTimes=False, ver
     for k in list(features.keys()):
         r_copy[k] = results[k].copy()
         del results[k] 
-    
-    if(computationTimes):
-        r_copy["computation_times2"] = times.copy()
     
     return(r_copy)
 
@@ -253,16 +244,21 @@ def removedExcludedFeatures(features, excluded, included):
 
 class NodesFeatures(Graph):
     
-    def __init__(self):
-        Graph.__init__(self)
+    fileExtension = ".json"
+    
+    def __init__(self, primingFile, dataFile, params, outFolder, logFiles):
+        
         self.params["use_networkit"] = True
         self.params["all_nodes"] = True
         self.params["nodes"] = None
         self.params["exclude_features"] = ["load"] # Excluded by default, too slow; ignored if include_features not empty
         self.params["include_features"] = [] # all features by default
-        self.params["computation_times"] = False
         self.params["verbose"] = False
+
+        Graph.__init__(self, primingFile, dataFile, params, outFolder, logFiles)
     
+    def save(self):
+        BaseTransform.save(self)
     
     def transforms(self, index, G):
 
@@ -300,7 +296,7 @@ class NodesFeatures(Graph):
             features["average_shortest_path_length"] = (average_shortest_path_length, G, nodes)
 
         features = removedExcludedFeatures(features, self.params["exclude_features"], self.params["include_features"])
-        results.update(computeFeaturesParallelized(features, self.params["nbProcess"], self.params["computation_times"], self.params["verbose"]))
+        results.update(computeFeaturesParallelized(features, self.params["nbProcess"], self.params["verbose"]))
 
         if(self.params["use_networkit"]):
             Gnk = nx2nk(G)
@@ -317,6 +313,6 @@ class NodesFeatures(Graph):
             features["average_shortest_path_length"] = (average_shortest_path_length_nk, G, Gnk, nodes)
 
             features = removedExcludedFeatures(features, self.params["exclude_features"], self.params["include_features"])
-            results.update(computeFeatures(features, self.params["computation_times"], self.params["verbose"]))
+            results.update(computeFeatures(features, self.params["verbose"]))
         
         return(results)

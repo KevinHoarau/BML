@@ -1,10 +1,14 @@
 from BML.transform import BaseTransformParallelized
 
 class HijackLabel(BaseTransformParallelized):
-
-    def __init__(self):
-        BaseTransformParallelized.__init__(self)
+    
+    computeUpdates = False
+        
+    def __init__(self, primingFile, dataFile, params, outFolder, logFiles):
+        
         self.params["hijack"] = None
+        
+        BaseTransformParallelized.__init__(self, primingFile, dataFile, params, outFolder, logFiles)
 
     def transforms(self, index, routes, updates):
 

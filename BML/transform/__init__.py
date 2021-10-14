@@ -3,7 +3,6 @@ from .features import Features
 from .graph import Graph, WeightedGraph
 from .nodes_features import NodesFeatures
 from .graph_features import GraphFeatures
-#from .graph_dgl import GraphDGL
 from .routes_features import RoutesFeatures
 from .hijackLabel import HijackLabel
 from .hijackAnalyze import HijackAnalyze

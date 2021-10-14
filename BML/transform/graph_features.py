@@ -79,17 +79,11 @@ def nb_spanning_trees(G, nodes, laplacian_eigenvalues=None):
     nst = np.prod(nonzero_eigenvalues/len(G))
     return(np.float64(nst))
 
-class GraphFeatures(Graph):
+class GraphFeatures(NodesFeatures):
     
-    def __init__(self):
-        Graph.__init__(self)
-        self.params["use_networkit"] = True
-        self.params["all_nodes"] = True
-        self.params["nodes"] = None
-        self.params["exclude_features"] = ["load"] # Excluded by default, too slow; ignored if include_features not empty
-        self.params["include_features"] = [] # all features by default
-        self.params["computation_times"] = False
-        self.params["verbose"] = False
+    def __init__(self, primingFile, dataFile, params, outFolder, logFiles):
+
+        NodesFeatures.__init__(self, primingFile, dataFile, params, outFolder, logFiles)
     
     def transforms(self, index, G):
 
@@ -102,7 +96,6 @@ class GraphFeatures(Graph):
                 G = nx.k_core(G, k, core_number)
 
             nodes = G.nodes
-
 
         laplacian_eigenvalues = None
         adjacency_eigenvalues = None
@@ -171,7 +164,7 @@ class GraphFeatures(Graph):
             if(self.params["verbose"]):
                 print("Finish normalized_laplacian_eigenvalues (%s)" % (timeFormat(time.time()-s)))
 
-        results.update(computeFeaturesParallelized(features, self.params["nbProcess"], self.params["computation_times"], self.params["verbose"]))
+        results.update(computeFeaturesParallelized(features, self.params["nbProcess"], self.params["verbose"]))
 
         del laplacian_eigenvalues
         del adjacency_eigenvalues
@@ -193,7 +186,7 @@ class GraphFeatures(Graph):
             features["average_shortest_path_length"] = (avgNodes, average_shortest_path_length_nk, G, Gnk, nodes)
 
             features = removedExcludedFeatures(features, self.params["exclude_features"], self.params["include_features"])
-            results.update(computeFeatures(features, self.params["computation_times"], self.params["verbose"]))
-            #results.update(computeFeaturesParallelized(features, self.params["computation_times"], self.params["verbose"]))
+            results.update(computeFeatures(features, self.params["verbose"]))
+            #results.update(computeFeaturesParallelized(features, self.params["verbose"]))
         
         return(results)

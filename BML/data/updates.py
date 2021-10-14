@@ -1,198 +1,134 @@
 #!/usr/bin/env python3
 
-import sys, os, time
+import time, json
 from pybgpstream import BGPStream, BGPRecord, BGPElem
-from threading import Thread
-import ipaddress as ip
-import json
-from BML.utils import utils
+from BML import utils
 
 def serialize_sets(obj):
     if isinstance(obj, set):
         return list(obj)
-
     return obj
 
-class UpdatesDump(Thread):
+class UpdatesDump(utils.BmlProcess):
 
-	def __init__(self, path):
+    def __init__(self, start, end, params, outFolder, logFiles):
 
-		Thread.__init__(self)
+        utils.BmlProcess.__init__(self, logFiles)
 
-		self.startTime = -1
-		self.endTime = -1
+        self.startTime = start
+        self.endTime = end
 
-		self.projects = ['ris','routeviews']
-		self.collectors = []
-		self.ipVersion = [4,6]
-		self.useRibs = False
+        self.stream = BGPStream()
 
-		self.stream = BGPStream()
+        self.filePath = self.getFilePath(outFolder)
 
-		self.currentTime = -1
-		self.finished = False
-		self.terminate = False
+        self.params = {
+            "Projects": ['ris','routeviews'],
+            "Collectors": [],
+            "IpVersion": [4,6],
+            "UseRibs": False,
+        }
+        
+        self.setParams(params)
 
-		self.filePath = self.getFilePath(path)
+    def startStream(self):
 
-	def setUseRibs(self, useRibs):
-		self.useRibs = useRibs
+        if(self.startTime!=-1 and self.endTime!=-1):
 
-	def setProjects(self, projects):
-		self.projects = projects
+            if(self.params["UseRibs"]):
+                self.stream = BGPStream(
+                    from_time=self.startTime, until_time=self.endTime,
+                    collectors=self.params["Collectors"],
+                    projects=self.params["Projects"]
+                    )
+            else:
+                self.stream = BGPStream(
+                    from_time=self.startTime, until_time=self.endTime,
+                    collectors=self.params["Collectors"],
+                    record_type="updates",
+                    projects=self.params["Projects"]
+                    )
+        else:
+            quit("Error: can't start stream, interval not set")
 
+    def buildUpdatesDump(self):
+        
+        self.startProgress = self.startTime
+        self.endProgress = self.endTime
 
-	def setIpVersion(self, ipVersion):
-		self.ipVersion = ipVersion
+        self.emptyFile()
 
-	def setCollectors(self, collectors):
-		self.collectors = collectors
+        for record in self.stream.records():
 
-	def setInterval(self, start, end):
-		self.startTime = start
-		self.endTime = end
+            if record.status == "valid":
 
-	def startStream(self):
+                for elem in record:
 
-		if(self.startTime!=-1 and self.endTime!=-1):
+                    self.printProgress(elem.time)
 
-			if(self.useRibs):
-				self.stream = BGPStream(
-					from_time=self.startTime, until_time=self.endTime,
-					collectors=self.collectors,
-					projects=self.projects
-					)
-			else:
-				self.stream = BGPStream(
-					from_time=self.startTime, until_time=self.endTime,
-					collectors=self.collectors,
-					record_type="updates",
-					projects=self.projects
-					)
+                    if(elem.type=='A' or elem.type=='W' or elem.type=='R'):
+                        
+                        if(utils.ipVersion(elem.fields['prefix']) in self.params["IpVersion"]):
 
-		else:
-			quit("Error: can't start stream, interval not set")
+                            u = {}
 
-	def getProgress(self):
-		progress = 0
-		if(self.currentTime!=-1):
-			progress = (self.currentTime-self.startTime)*100//(self.endTime-self.startTime)
-		return(progress)
-		
-	def isRunning(self):
-		return(not self.finished)
+                            u['collector'] = str(record.collector)
+                            u['dump_time'] = str(record.dump_time)
+                            u['type'] = str(elem.type)
+                            u['time'] = str(int(elem.time))
+                            u['peer_address'] = str(elem.peer_address)
+                            u['peer_asn'] = str(elem.peer_asn)
+                            u['fields'] = json.dumps(elem.fields, default=serialize_sets)
 
-	def stop(self):
-		self.terminate = True
+                            self.appendToFile(u)
 
+    def getFilePath(self, path):
+        return(utils.mkdirPath(path) + "updates.csv")
 
-	def buildUpdatesDump(self):
+    def emptyFile(self):
+        file = open(self.filePath,"w")
+        file.write("collector,dump_time,type,time,peer_address,peer_asn,fields" + '\n')
+        file.close()
+        return(self.filePath)
 
-		self.emptyFile()
+    def appendToFile(self, u):
+        file = open(self.filePath,"a")
+        file.write(u['collector']+","+u['dump_time']+","+u['type']+","+u['time']+","+u['peer_address']+","+u['peer_asn']+","+u['fields'] + '\n')
+        file.close()
+        return(self.filePath)
 
-		for record in self.stream.records():
+    def execute(self):
+        
+        timeAtStart = time.time()
+        
+        self.log("###############")
+        self.log("# Updates dump")
+        self.log("###############")
+        self.log("Start time: " + str(self.startTime))
+        self.log("End time: " + str(self.endTime))
+        self.log("Duration: " + utils.timeFormat(self.endTime-self.startTime))
+        self.printParams()
 
-			if(self.terminate):
-				break
+        self.startStream()
+        self.buildUpdatesDump()
+        
+        self.log("Computation time: " + utils.timeFormat(time.time()-timeAtStart))
+        self.log("Updates dump saved to: " + self.filePath)
+        
 
-			if record.status == "valid":
+def dumpUpdates(start, end, outfolder, params=None, logFiles=None):
+    
+    if(params is None):
+        params = {}
+        
+    if(logFiles is None):
+        logFiles = []
+    
+    logFile = open(utils.mkdirPath(outfolder)+"updates_dump.log",'w')
+    logFiles.append(logFile)
 
+    updatesDump = UpdatesDump(start, end, params, outfolder, logFiles)
+    updatesDump.execute()
+    logFile.close()
 
-				for elem in record:
-
-					self.currentTime = elem.time
-
-					if(elem.type=='A' or elem.type=='W' or elem.type=='R'):
-
-						u = {}
-
-						u['collector'] = str(record.collector)
-						u['dump_time'] = str(record.dump_time)
-						u['type'] = str(elem.type)
-						u['time'] = str(int(elem.time))
-						u['peer_address'] = str(elem.peer_address)
-						u['peer_asn'] = str(elem.peer_asn)
-						u['fields'] = json.dumps(elem.fields, default=serialize_sets)
-						
-						try:
-							network = ip.ip_network(elem.fields['prefix'])
-							if(network.version in self.ipVersion):
-								self.appendToFile(u)
-						except Exception as e:
-							print(e)
-
-		self.finished = True
-
-
-	def getOutputFilename(self):
-		return("updates.csv")
-
-
-	def getFilePath(self, path):
-		return(utils.mkdirPath(path) + self.getOutputFilename())
-
-	def emptyFile(self):
-
-		file = open(self.filePath,"w")
-		file.write("collector,dump_time,type,time,peer_address,peer_asn,fields" + '\n')
-		file.close()
-
-		return(self.filePath)
-
-	def appendToFile(self, u):
-
-		file = open(self.filePath,"a")
-		file.write(u['collector']+","+u['dump_time']+","+u['type']+","+u['time']+","+u['peer_address']+","+u['peer_asn']+","+u['fields'] + '\n')
-		file.close()
-
-		return(self.filePath)
-
-
-	def run(self):
-
-		self.startStream()
-		self.buildUpdatesDump()
-
-
-def dumpUpdates(start, end, folder, collectors, logFiles=[], projects=["ris"], ipVersion=[4,6], useRibs=False):
-
-	logFile = open(utils.mkdirPath(folder)+"log_updates_dump.log",'w')
-	logFiles.append(logFile)
-
-	updatesDump = UpdatesDump(folder)
-
-	try:
-
-		updatesDump.setInterval(start,end)
-		updatesDump.setProjects(projects)
-		updatesDump.setCollectors(collectors)
-		updatesDump.setIpVersion(ipVersion)
-		updatesDump.setUseRibs(useRibs)
-		
-		utils.printAndLog("###############", logFiles)
-		utils.printAndLog("# Updates dump", logFiles)
-		utils.printAndLog("###############", logFiles)
-		utils.printAndLog("Start time: " + str(updatesDump.startTime), logFiles)
-		utils.printAndLog("End time: " + str(updatesDump.endTime), logFiles)
-		utils.printAndLog("Duration: " + utils.timeFormat(updatesDump.endTime-updatesDump.startTime), logFiles)
-		utils.printAndLog("Projects: " + str(updatesDump.projects), logFiles)
-		utils.printAndLog("Collectors: " + str(updatesDump.collectors), logFiles)
-		utils.printAndLog("Ip version: " + str(updatesDump.ipVersion), logFiles)
-
-		timeAtStart = time.time() 
-
-		updatesDump.start()
-		
-		utils.printProgress(updatesDump, logFiles)
-
-		utils.printAndLog("Computation time: " + utils.timeFormat(time.time()-timeAtStart), logFiles)
-		utils.printAndLog("Updates dump saved to: " + updatesDump.filePath, logFiles)
-
-	except KeyboardInterrupt:
-		utils.printAndLog('User interrupted, ask updates dump to stop...', logFiles)
-		updatesDump.stop()
-		quit()
-
-	logFile.close()
-
-	return(updatesDump.filePath)
+    return(updatesDump.filePath)

@@ -6,10 +6,12 @@ class HijackAnalyze(BaseTransformParallelized):
     computeRoutes = False
     loadPrimingData = False
     
-    def __init__(self):
-        BaseTransformParallelized.__init__(self)
+    def __init__(self, primingFile, dataFile, params, outFolder, logFiles):
+        
         self.params["hijack"] = None
         self.params["summary"] = True
+        
+        BaseTransformParallelized.__init__(self, primingFile, dataFile, params, outFolder, logFiles)
         
     def transforms(self, index, routes, updates):
         

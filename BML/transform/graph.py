@@ -9,6 +9,8 @@ import pandas as pd
 
 import multiprocessing
 
+import pickle
+
 def buildWeightedGraph(routes):
 
     graph =  nx.Graph()
@@ -98,130 +100,30 @@ def buildGraph(routes):
     return(G)
 
 
-def getEdges(routes, keys, edgeslist, index):
-
-    try:
-
-        edges = set()
-
-        for prefix in keys:
-
-            for collector in routes[prefix].keys():
-                
-                for peer in routes[prefix][collector].keys():
-                    path = routes[prefix][collector][peer]
-
-                    if(path != None):
-
-                        if('{' in path or '}' in path):
-                            pass
-                        else:
-
-                            path_vertices = path.split(' ')
-
-                            for i in range(len(path_vertices)-1):
-                                a,b = (path_vertices[i], path_vertices[i+1])
-                                if(a!=b):
-                                    edges.add((a,b))
-        edgeslist[index] = edges
-
-    except KeyboardInterrupt:
-        pass
-
-
-def buildGraphParallelized(routes, nbProcess=16):
-
-    G =  nx.Graph()
-
-    manager = multiprocessing.Manager()
-    edgeslist = manager.dict()
-
-    keys = [*routes.keys()]
-    jobs = []
-    try:
-        for i in range(nbProcess):
-            p = multiprocessing.Process(target=getEdges, args=(routes, keys[i::nbProcess], edgeslist, i))
-            jobs.append(p)
-            p.start()
-        for p in jobs:
-            p.join()
-            p.close()
-
-    except KeyboardInterrupt:
-        print("buildGraphParallelized: terminate running jobs")
-        for p in jobs:
-            p.terminate()
-            p.join()
-            p.close()
-        print("buildGraphParallelized: done")
-    
-    l = []
-    for i in range(len(edgeslist)):
-        for e in edgeslist[i]:
-            l.append(e)
-        del edgeslist[i]
-
-    edges = set(l)
-    G.add_edges_from(edges)
-
-    return(G)
-
 class Graph(BaseTransformParallelized):
+    
+    computeUpdates = False
+    
+    fileExtension = ".pickle"
 
-    def __init__(self):
+    def __init__(self, primingFile, dataFile, params, outFolder, logFiles):
 
-        BaseTransformParallelized.__init__(self)
+        BaseTransformParallelized.__init__(self, primingFile, dataFile, params, outFolder, logFiles)
         
     def runTransforms(self, data, index, routes, updates):
         G = buildGraph(routes)
+        del routes
         data[index] = self.transforms(index, G)
         del G
         return(None)
+    
+    def save(self):
+        with open(self.filePath, 'wb') as outfile:
+            pickle.dump(self.transformedData, outfile)
+        self.log("saved")
 
     def transforms(self, index, G):
-        
-        G = nx.convert_node_labels_to_integers(G)
-        
-        graphData = {
-            "edge_data": list(G.edges.data()),
-            "node_data": list(G.nodes.data())
-
-        }
-
-        return(graphData)
-
-class Graphv2(BaseTransformParallelized):
-
-    def __init__(self):
-
-        BaseTransformParallelized.__init__(self)
-        self.params["nbProcessGraph"] = multiprocessing.cpu_count()
-
-    def computeSnapshot(self, t, routes, updatesParsed):
-        self.pq.waitUntilFree()
-        G = buildGraphParallelized(routes, self.params["nbProcessGraph"])
-        self.pq.addProcess(target=self.runTransforms, args=(self.data, t, G))
-        if(t%self.params["nbProcess"]==self.params["nbProcess"]-1):
-            self.pq.runOnce()
-
-    def runTransforms(self, data, index, G):
-        data[index] = self.transforms(index, G)
-        del G
-        return(None)
-
-    def transforms(self, index, G):
-        
-        G = nx.convert_node_labels_to_integers(G)
-        
-        graphData = {
-            "edge_data": list(G.edges.data()),
-            "node_data": list(G.nodes.data())
-
-        }
-
-        return(graphData)
-
-
+        return(G)
 
 def getWeightedSubgraph(routes, keys, graphlist, index):
 
