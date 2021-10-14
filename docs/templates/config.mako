@@ -46,7 +46,7 @@
     # The whitespace-separated tokens represent arbitrary extra queries (at least one
     # must match) passed to regular Google search. Example:
     #google_search_query = 'inurl:github.com/USER/PROJECT  site:PROJECT.github.io  site:PROJECT.website'
-    google_search_query = ''
+    #google_search_query = ''
 
     # Enable offline search using Lunr.js. For explanation of 'fuzziness' parameter, which is
     # added to every query word, see: https://lunrjs.com/guides/searching.html#fuzzy-matches

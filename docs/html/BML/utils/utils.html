@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1" />
-<meta name="generator" content="pdoc 0.9.2" />
+<meta name="generator" content="pdoc 0.9.1" />
 <title>BML.utils.utils API documentation</title>
 <meta name="description" content="Summary" />
 <link rel="preload stylesheet" as="style" href="https://cdnjs.cloudflare.com/ajax/libs/10up-sanitize.css/11.0.1/sanitize.min.css" integrity="sha256-PK9q560IAAa6WVRRh76LtCaI8pjTJ2z11v0miyNNjrs=" crossorigin>
@@ -30,8 +30,15 @@
 <pre><code class="python">&#34;&#34;&#34;Summary
 &#34;&#34;&#34;
 
-import sys, os, time, gzip, shutil, io, multiprocessing, json
+import sys, os, time, gzip, shutil, io, json
 from datetime import datetime
+from .processing_queue import ProcessingQueue
+
+def ipVersion(prefix):
+    if(&#34;:&#34;in prefix):
+        return(6)
+    else:
+        return(4)
 
 def getIndexList(l):
     index = {}
@@ -88,7 +95,7 @@ def printAndLog(line, files, indent=&#34;  &#34;):
         indent (str, optional): Description
     &#34;&#34;&#34;
     nbFiles = len(files)-1
-    if(not files[0]==&#34;LOG_ONLY&#34;):
+    if(len(files)==0 or not files[0]==&#34;LOG_ONLY&#34;):
         print(indent*nbFiles + line)
     count = 0
     for file in files:
@@ -175,179 +182,6 @@ def ungzipFileInMemory(filegzpath):
         f_out.seek(0)
 
     return(f_out)
-
-
-class ProcessingQueue(object):
-
-    &#34;&#34;&#34;Summary
-    
-    Attributes:
-        finish (list): Description
-        nbProcess (TYPE): Description
-        processes (list): Description
-        queue (list): Description
-        running (list): Description
-    &#34;&#34;&#34;
-    
-    def __init__(self, nbProcess=16):
-        &#34;&#34;&#34;Summary
-        
-        Args:
-            nbProcess (int, optional): Description
-        &#34;&#34;&#34;
-        self.queue = []
-        self.running = []
-        self.finish = []
-        self.processes = []
-        self.nbProcess = nbProcess
-
-        for i in range(self.nbProcess):
-            self.processes.append(None)
-            self.running.append(None)
-
-    def stop(self):
-        for i in range(self.nbProcess):
-            self.processes[i].terminate()
-
-    def runOnce(self):
-
-        processesAlive = False
-        for i in range(self.nbProcess):
-            if(not self.processes[i] is None and self.processes[i].is_alive()):
-                processesAlive = True
-            else:
-                if(self.running[i]!=None):
-                    self.finish.append(self.running[i])
-                    self.running[i] = None
-                    if(self.processes[i].exitcode!=0):
-                        sys.exit(&#34;Subprocess terminated with exit code %i, execution stoped&#34; % (self.processes[i].exitcode))
-
-                if(len(self.queue)&gt;0):
-                    (target, args, kwargs) = self.queue[0]
-                    self.processes[i] = multiprocessing.Process(target=target, args=args, kwargs=kwargs)
-                    self.processes[i].start()
-                    processesAlive = True
-                    self.running[i] = (target, args, kwargs)
-                    self.queue.pop(0)
-        return(processesAlive)
-
-    def waitUntilFree(self):
-        while True:
-            for i in range(self.nbProcess):
-                if(self.processes[i] is None or not self.processes[i].is_alive()):
-                    return
-            time.sleep(1)
-
-
-    def run(self, logFilePath=&#34;&#34;):
-        &#34;&#34;&#34;Summary
-        
-        Args:
-            logFilePath (str, optional): Description
-        &#34;&#34;&#34;
-        processesAlive = False
-
-        try:
-            
-            while len(self.queue)&gt;0 or processesAlive:
-
-                processesAlive = self.runOnce()
-
-                self.runLog(logFilePath)
-                time.sleep(1)
-
-            for i in range(self.nbProcess):
-                if(not self.processes[i] is None):
-                    self.processes[i].join()
-                    self.processes[i].close()
-
-        except KeyboardInterrupt:
-            print(&#34;ProcessingQueue: terminate running jobs&#34;)
-
-            for i in range(self.nbProcess):
-                if(not self.processes[i] is None):
-                    self.processes[i].terminate()
-                    self.processes[i].join()
-                    self.processes[i].close()
-
-            print(&#34;ProcessingQueue: done&#34;)
-
-    def addProcess(self, target=None, args=(), kwargs={}):
-        &#34;&#34;&#34;Summary
-        
-        Args:
-            target (None, optional): Description
-            args (tuple, optional): Description
-            kwargs (dict, optional): Description
-        &#34;&#34;&#34;
-        self.queue.append((target, args, kwargs))
-
-    def formatLog(self, listP):
-        &#34;&#34;&#34;Summary
-        
-        Args:
-            listP (TYPE): Description
-        
-        Returns:
-            TYPE: Description
-        &#34;&#34;&#34;
-        i_space = len(str(len(listP)))
-        t_space = len(&#34;Function&#34;)
-        a_space = len(&#34;Args&#34;)
-        kw_space = len(&#34;Kwargs&#34;)
-        log = &#34;&#34;
-
-        for i in range(len(listP)):
-            if(listP[i]!=None):
-                (target, args, kwargs) = listP[i]
-                t_space = len(str(target.__name__)) if len(str(target.__name__))&gt;t_space else t_space
-                a_space = len(str(args)) if len(str(args))&gt;a_space else a_space
-                kw_space = len(str(kwargs)) if len(str(kwargs))&gt;kw_space else kw_space
-
-        vline = (&#34;=&#34;*(t_space+a_space+kw_space+13)) + &#34;\n&#34;
-        log+= vline
-        log += (&#34;|{:&lt;&#34;+str(i_space)+&#34;s}| {:&#34;+str(t_space)+&#34;s} | {:&#34;+str(a_space)+&#34;s} | {:&#34;+str(kw_space)+&#34;s} | \n&#34;).format(&#34;#&#34;,&#34;Function&#34;,&#34;Args&#34;,&#34;Kwargs&#34;)
-        descr = &#34;|{:&lt;&#34;+str(i_space)+&#34;d}| {:&#34;+str(t_space)+&#34;s} | {:&#34;+str(a_space)+&#34;s} | {:&#34;+str(kw_space)+&#34;s} | \n&#34;
-        log+= vline
-
-        for i in range(len(listP)):
-            if(listP[i]!=None):
-                (target, args, kwargs) = listP[i]
-                log += descr.format(i, target.__name__, str(args), str(kwargs))
-            else:
-                log += descr.format(i, &#34;Empty&#34;, &#34;&#34;, &#34;&#34;)
-
-        log += vline
-
-        return(log)
-
-    def runLog(self, logFilePath):
-        &#34;&#34;&#34;Summary
-        
-        Args:
-            logFilePath (TYPE): Description
-        &#34;&#34;&#34;
-        if(not logFilePath==&#34;&#34;):
-
-            log =  &#34;#######################\n&#34;
-            log += &#34;# Queue : Running      \n&#34;
-            log += &#34;#######################\n&#34;
-            log += self.formatLog(self.running) + &#34;\n&#34;
-
-            log +=  &#34;#######################\n&#34;
-            log += &#34;# Queue : Waiting      \n&#34;
-            log += &#34;#######################\n&#34;
-            log += self.formatLog(self.queue) + &#34;\n&#34;
-
-            log +=  &#34;#######################\n&#34;
-            log += &#34;# Queue : Finish      \n&#34;
-            log += &#34;#######################\n&#34;
-            log += self.formatLog(self.finish) + &#34;\n&#34;
-
-            with open(logFilePath, &#34;w&#34;) as file:
-                file.write(log)
-                file.close()
-
 
 
 class MissingArg(Exception):
@@ -740,6 +574,22 @@ If the the arg is missing, return None if the is arg is optional otherwise a Mis
     return(filegzpath)</code></pre>
 </details>
 </dd>
+<dt id="BML.utils.utils.ipVersion"><code class="name flex">
+<span>def <span class="ident">ipVersion</span></span>(<span>prefix)</span>
+</code></dt>
+<dd>
+<div class="desc"></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def ipVersion(prefix):
+    if(&#34;:&#34;in prefix):
+        return(6)
+    else:
+        return(4)</code></pre>
+</details>
+</dd>
 <dt id="BML.utils.utils.mkdirPath"><code class="name flex">
 <span>def <span class="ident">mkdirPath</span></span>(<span>path)</span>
 </code></dt>
@@ -807,7 +657,7 @@ If the the arg is missing, return None if the is arg is optional otherwise a Mis
         indent (str, optional): Description
     &#34;&#34;&#34;
     nbFiles = len(files)-1
-    if(not files[0]==&#34;LOG_ONLY&#34;):
+    if(len(files)==0 or not files[0]==&#34;LOG_ONLY&#34;):
         print(indent*nbFiles + line)
     count = 0
     for file in files:
@@ -1109,456 +959,11 @@ If the the arg is missing, return None if the is arg is optional otherwise a Mis
 <li>builtins.BaseException</li>
 </ul>
 </dd>
-<dt id="BML.utils.utils.ProcessingQueue"><code class="flex name class">
-<span>class <span class="ident">ProcessingQueue</span></span>
-<span>(</span><span>nbProcess=16)</span>
-</code></dt>
-<dd>
-<div class="desc"><p>Summary</p>
-<h2 id="attributes">Attributes</h2>
-<dl>
-<dt><strong><code>finish</code></strong> :&ensp;<code>list</code></dt>
-<dd>Description</dd>
-<dt><strong><code>nbProcess</code></strong> :&ensp;<code>TYPE</code></dt>
-<dd>Description</dd>
-<dt><strong><code>processes</code></strong> :&ensp;<code>list</code></dt>
-<dd>Description</dd>
-<dt><strong><code>queue</code></strong> :&ensp;<code>list</code></dt>
-<dd>Description</dd>
-<dt><strong><code>running</code></strong> :&ensp;<code>list</code></dt>
-<dd>Description</dd>
-</dl>
-<p>Summary</p>
-<h2 id="args">Args</h2>
-<dl>
-<dt><strong><code>nbProcess</code></strong> :&ensp;<code>int</code>, optional</dt>
-<dd>Description</dd>
-</dl></div>
-<details class="source">
-<summary>
-<span>Expand source code</span>
-</summary>
-<pre><code class="python">class ProcessingQueue(object):
-
-    &#34;&#34;&#34;Summary
-    
-    Attributes:
-        finish (list): Description
-        nbProcess (TYPE): Description
-        processes (list): Description
-        queue (list): Description
-        running (list): Description
-    &#34;&#34;&#34;
-    
-    def __init__(self, nbProcess=16):
-        &#34;&#34;&#34;Summary
-        
-        Args:
-            nbProcess (int, optional): Description
-        &#34;&#34;&#34;
-        self.queue = []
-        self.running = []
-        self.finish = []
-        self.processes = []
-        self.nbProcess = nbProcess
-
-        for i in range(self.nbProcess):
-            self.processes.append(None)
-            self.running.append(None)
-
-    def stop(self):
-        for i in range(self.nbProcess):
-            self.processes[i].terminate()
-
-    def runOnce(self):
-
-        processesAlive = False
-        for i in range(self.nbProcess):
-            if(not self.processes[i] is None and self.processes[i].is_alive()):
-                processesAlive = True
-            else:
-                if(self.running[i]!=None):
-                    self.finish.append(self.running[i])
-                    self.running[i] = None
-                    if(self.processes[i].exitcode!=0):
-                        sys.exit(&#34;Subprocess terminated with exit code %i, execution stoped&#34; % (self.processes[i].exitcode))
-
-                if(len(self.queue)&gt;0):
-                    (target, args, kwargs) = self.queue[0]
-                    self.processes[i] = multiprocessing.Process(target=target, args=args, kwargs=kwargs)
-                    self.processes[i].start()
-                    processesAlive = True
-                    self.running[i] = (target, args, kwargs)
-                    self.queue.pop(0)
-        return(processesAlive)
-
-    def waitUntilFree(self):
-        while True:
-            for i in range(self.nbProcess):
-                if(self.processes[i] is None or not self.processes[i].is_alive()):
-                    return
-            time.sleep(1)
-
-
-    def run(self, logFilePath=&#34;&#34;):
-        &#34;&#34;&#34;Summary
-        
-        Args:
-            logFilePath (str, optional): Description
-        &#34;&#34;&#34;
-        processesAlive = False
-
-        try:
-            
-            while len(self.queue)&gt;0 or processesAlive:
-
-                processesAlive = self.runOnce()
-
-                self.runLog(logFilePath)
-                time.sleep(1)
-
-            for i in range(self.nbProcess):
-                if(not self.processes[i] is None):
-                    self.processes[i].join()
-                    self.processes[i].close()
-
-        except KeyboardInterrupt:
-            print(&#34;ProcessingQueue: terminate running jobs&#34;)
-
-            for i in range(self.nbProcess):
-                if(not self.processes[i] is None):
-                    self.processes[i].terminate()
-                    self.processes[i].join()
-                    self.processes[i].close()
-
-            print(&#34;ProcessingQueue: done&#34;)
-
-    def addProcess(self, target=None, args=(), kwargs={}):
-        &#34;&#34;&#34;Summary
-        
-        Args:
-            target (None, optional): Description
-            args (tuple, optional): Description
-            kwargs (dict, optional): Description
-        &#34;&#34;&#34;
-        self.queue.append((target, args, kwargs))
-
-    def formatLog(self, listP):
-        &#34;&#34;&#34;Summary
-        
-        Args:
-            listP (TYPE): Description
-        
-        Returns:
-            TYPE: Description
-        &#34;&#34;&#34;
-        i_space = len(str(len(listP)))
-        t_space = len(&#34;Function&#34;)
-        a_space = len(&#34;Args&#34;)
-        kw_space = len(&#34;Kwargs&#34;)
-        log = &#34;&#34;
-
-        for i in range(len(listP)):
-            if(listP[i]!=None):
-                (target, args, kwargs) = listP[i]
-                t_space = len(str(target.__name__)) if len(str(target.__name__))&gt;t_space else t_space
-                a_space = len(str(args)) if len(str(args))&gt;a_space else a_space
-                kw_space = len(str(kwargs)) if len(str(kwargs))&gt;kw_space else kw_space
-
-        vline = (&#34;=&#34;*(t_space+a_space+kw_space+13)) + &#34;\n&#34;
-        log+= vline
-        log += (&#34;|{:&lt;&#34;+str(i_space)+&#34;s}| {:&#34;+str(t_space)+&#34;s} | {:&#34;+str(a_space)+&#34;s} | {:&#34;+str(kw_space)+&#34;s} | \n&#34;).format(&#34;#&#34;,&#34;Function&#34;,&#34;Args&#34;,&#34;Kwargs&#34;)
-        descr = &#34;|{:&lt;&#34;+str(i_space)+&#34;d}| {:&#34;+str(t_space)+&#34;s} | {:&#34;+str(a_space)+&#34;s} | {:&#34;+str(kw_space)+&#34;s} | \n&#34;
-        log+= vline
-
-        for i in range(len(listP)):
-            if(listP[i]!=None):
-                (target, args, kwargs) = listP[i]
-                log += descr.format(i, target.__name__, str(args), str(kwargs))
-            else:
-                log += descr.format(i, &#34;Empty&#34;, &#34;&#34;, &#34;&#34;)
-
-        log += vline
-
-        return(log)
-
-    def runLog(self, logFilePath):
-        &#34;&#34;&#34;Summary
-        
-        Args:
-            logFilePath (TYPE): Description
-        &#34;&#34;&#34;
-        if(not logFilePath==&#34;&#34;):
-
-            log =  &#34;#######################\n&#34;
-            log += &#34;# Queue : Running      \n&#34;
-            log += &#34;#######################\n&#34;
-            log += self.formatLog(self.running) + &#34;\n&#34;
-
-            log +=  &#34;#######################\n&#34;
-            log += &#34;# Queue : Waiting      \n&#34;
-            log += &#34;#######################\n&#34;
-            log += self.formatLog(self.queue) + &#34;\n&#34;
-
-            log +=  &#34;#######################\n&#34;
-            log += &#34;# Queue : Finish      \n&#34;
-            log += &#34;#######################\n&#34;
-            log += self.formatLog(self.finish) + &#34;\n&#34;
-
-            with open(logFilePath, &#34;w&#34;) as file:
-                file.write(log)
-                file.close()</code></pre>
-</details>
-<h3>Methods</h3>
-<dl>
-<dt id="BML.utils.utils.ProcessingQueue.addProcess"><code class="name flex">
-<span>def <span class="ident">addProcess</span></span>(<span>self, target=None, args=(), kwargs={})</span>
-</code></dt>
-<dd>
-<div class="desc"><p>Summary</p>
-<h2 id="args">Args</h2>
-<dl>
-<dt><strong><code>target</code></strong> :&ensp;<code>None</code>, optional</dt>
-<dd>Description</dd>
-<dt><strong><code>args</code></strong> :&ensp;<code>tuple</code>, optional</dt>
-<dd>Description</dd>
-<dt><strong><code>kwargs</code></strong> :&ensp;<code>dict</code>, optional</dt>
-<dd>Description</dd>
-</dl></div>
-<details class="source">
-<summary>
-<span>Expand source code</span>
-</summary>
-<pre><code class="python">def addProcess(self, target=None, args=(), kwargs={}):
-    &#34;&#34;&#34;Summary
-    
-    Args:
-        target (None, optional): Description
-        args (tuple, optional): Description
-        kwargs (dict, optional): Description
-    &#34;&#34;&#34;
-    self.queue.append((target, args, kwargs))</code></pre>
-</details>
-</dd>
-<dt id="BML.utils.utils.ProcessingQueue.formatLog"><code class="name flex">
-<span>def <span class="ident">formatLog</span></span>(<span>self, listP)</span>
-</code></dt>
-<dd>
-<div class="desc"><p>Summary</p>
-<h2 id="args">Args</h2>
-<dl>
-<dt><strong><code>listP</code></strong> :&ensp;<code>TYPE</code></dt>
-<dd>Description</dd>
-</dl>
-<h2 id="returns">Returns</h2>
-<dl>
-<dt><code>TYPE</code></dt>
-<dd>Description</dd>
-</dl></div>
-<details class="source">
-<summary>
-<span>Expand source code</span>
-</summary>
-<pre><code class="python">def formatLog(self, listP):
-    &#34;&#34;&#34;Summary
-    
-    Args:
-        listP (TYPE): Description
-    
-    Returns:
-        TYPE: Description
-    &#34;&#34;&#34;
-    i_space = len(str(len(listP)))
-    t_space = len(&#34;Function&#34;)
-    a_space = len(&#34;Args&#34;)
-    kw_space = len(&#34;Kwargs&#34;)
-    log = &#34;&#34;
-
-    for i in range(len(listP)):
-        if(listP[i]!=None):
-            (target, args, kwargs) = listP[i]
-            t_space = len(str(target.__name__)) if len(str(target.__name__))&gt;t_space else t_space
-            a_space = len(str(args)) if len(str(args))&gt;a_space else a_space
-            kw_space = len(str(kwargs)) if len(str(kwargs))&gt;kw_space else kw_space
-
-    vline = (&#34;=&#34;*(t_space+a_space+kw_space+13)) + &#34;\n&#34;
-    log+= vline
-    log += (&#34;|{:&lt;&#34;+str(i_space)+&#34;s}| {:&#34;+str(t_space)+&#34;s} | {:&#34;+str(a_space)+&#34;s} | {:&#34;+str(kw_space)+&#34;s} | \n&#34;).format(&#34;#&#34;,&#34;Function&#34;,&#34;Args&#34;,&#34;Kwargs&#34;)
-    descr = &#34;|{:&lt;&#34;+str(i_space)+&#34;d}| {:&#34;+str(t_space)+&#34;s} | {:&#34;+str(a_space)+&#34;s} | {:&#34;+str(kw_space)+&#34;s} | \n&#34;
-    log+= vline
-
-    for i in range(len(listP)):
-        if(listP[i]!=None):
-            (target, args, kwargs) = listP[i]
-            log += descr.format(i, target.__name__, str(args), str(kwargs))
-        else:
-            log += descr.format(i, &#34;Empty&#34;, &#34;&#34;, &#34;&#34;)
-
-    log += vline
-
-    return(log)</code></pre>
-</details>
-</dd>
-<dt id="BML.utils.utils.ProcessingQueue.run"><code class="name flex">
-<span>def <span class="ident">run</span></span>(<span>self, logFilePath='')</span>
-</code></dt>
-<dd>
-<div class="desc"><p>Summary</p>
-<h2 id="args">Args</h2>
-<dl>
-<dt><strong><code>logFilePath</code></strong> :&ensp;<code>str</code>, optional</dt>
-<dd>Description</dd>
-</dl></div>
-<details class="source">
-<summary>
-<span>Expand source code</span>
-</summary>
-<pre><code class="python">def run(self, logFilePath=&#34;&#34;):
-    &#34;&#34;&#34;Summary
-    
-    Args:
-        logFilePath (str, optional): Description
-    &#34;&#34;&#34;
-    processesAlive = False
-
-    try:
-        
-        while len(self.queue)&gt;0 or processesAlive:
-
-            processesAlive = self.runOnce()
-
-            self.runLog(logFilePath)
-            time.sleep(1)
-
-        for i in range(self.nbProcess):
-            if(not self.processes[i] is None):
-                self.processes[i].join()
-                self.processes[i].close()
-
-    except KeyboardInterrupt:
-        print(&#34;ProcessingQueue: terminate running jobs&#34;)
-
-        for i in range(self.nbProcess):
-            if(not self.processes[i] is None):
-                self.processes[i].terminate()
-                self.processes[i].join()
-                self.processes[i].close()
-
-        print(&#34;ProcessingQueue: done&#34;)</code></pre>
-</details>
-</dd>
-<dt id="BML.utils.utils.ProcessingQueue.runLog"><code class="name flex">
-<span>def <span class="ident">runLog</span></span>(<span>self, logFilePath)</span>
-</code></dt>
-<dd>
-<div class="desc"><p>Summary</p>
-<h2 id="args">Args</h2>
-<dl>
-<dt><strong><code>logFilePath</code></strong> :&ensp;<code>TYPE</code></dt>
-<dd>Description</dd>
-</dl></div>
-<details class="source">
-<summary>
-<span>Expand source code</span>
-</summary>
-<pre><code class="python">def runLog(self, logFilePath):
-    &#34;&#34;&#34;Summary
-    
-    Args:
-        logFilePath (TYPE): Description
-    &#34;&#34;&#34;
-    if(not logFilePath==&#34;&#34;):
-
-        log =  &#34;#######################\n&#34;
-        log += &#34;# Queue : Running      \n&#34;
-        log += &#34;#######################\n&#34;
-        log += self.formatLog(self.running) + &#34;\n&#34;
-
-        log +=  &#34;#######################\n&#34;
-        log += &#34;# Queue : Waiting      \n&#34;
-        log += &#34;#######################\n&#34;
-        log += self.formatLog(self.queue) + &#34;\n&#34;
-
-        log +=  &#34;#######################\n&#34;
-        log += &#34;# Queue : Finish      \n&#34;
-        log += &#34;#######################\n&#34;
-        log += self.formatLog(self.finish) + &#34;\n&#34;
-
-        with open(logFilePath, &#34;w&#34;) as file:
-            file.write(log)
-            file.close()</code></pre>
-</details>
-</dd>
-<dt id="BML.utils.utils.ProcessingQueue.runOnce"><code class="name flex">
-<span>def <span class="ident">runOnce</span></span>(<span>self)</span>
-</code></dt>
-<dd>
-<div class="desc"></div>
-<details class="source">
-<summary>
-<span>Expand source code</span>
-</summary>
-<pre><code class="python">def runOnce(self):
-
-    processesAlive = False
-    for i in range(self.nbProcess):
-        if(not self.processes[i] is None and self.processes[i].is_alive()):
-            processesAlive = True
-        else:
-            if(self.running[i]!=None):
-                self.finish.append(self.running[i])
-                self.running[i] = None
-                if(self.processes[i].exitcode!=0):
-                    sys.exit(&#34;Subprocess terminated with exit code %i, execution stoped&#34; % (self.processes[i].exitcode))
-
-            if(len(self.queue)&gt;0):
-                (target, args, kwargs) = self.queue[0]
-                self.processes[i] = multiprocessing.Process(target=target, args=args, kwargs=kwargs)
-                self.processes[i].start()
-                processesAlive = True
-                self.running[i] = (target, args, kwargs)
-                self.queue.pop(0)
-    return(processesAlive)</code></pre>
-</details>
-</dd>
-<dt id="BML.utils.utils.ProcessingQueue.stop"><code class="name flex">
-<span>def <span class="ident">stop</span></span>(<span>self)</span>
-</code></dt>
-<dd>
-<div class="desc"></div>
-<details class="source">
-<summary>
-<span>Expand source code</span>
-</summary>
-<pre><code class="python">def stop(self):
-    for i in range(self.nbProcess):
-        self.processes[i].terminate()</code></pre>
-</details>
-</dd>
-<dt id="BML.utils.utils.ProcessingQueue.waitUntilFree"><code class="name flex">
-<span>def <span class="ident">waitUntilFree</span></span>(<span>self)</span>
-</code></dt>
-<dd>
-<div class="desc"></div>
-<details class="source">
-<summary>
-<span>Expand source code</span>
-</summary>
-<pre><code class="python">def waitUntilFree(self):
-    while True:
-        for i in range(self.nbProcess):
-            if(self.processes[i] is None or not self.processes[i].is_alive()):
-                return
-        time.sleep(1)</code></pre>
-</details>
-</dd>
-</dl>
-</dd>
 </dl>
 </section>
 </article>
 <nav id="sidebar">
-<a href="" style="font-size:4em;color:#058">BML</a>
+<a href="https://kevinhoarau.github.io/BML/" style="font-size:4em;color:#058">BML</a>
 <hr style="margin-top:30px;margin-bottom:30px;">
 <form>
 <input id="lunr-search" name="q" placeholder="🔎 Search ..." aria-label="Search"
@@ -1594,7 +999,7 @@ const query = new URL(window.location).searchParams.get('q');
 if (query)
 search(query);
 function search(query) {
-const url = '../../doc-search.html#' + encodeURIComponent(query);
+const url = '../search.html#' + encodeURIComponent(query);
 new tingle.modal({
 cssClass: ['modal-dialog'],
 onClose: () => {
@@ -1624,6 +1029,7 @@ setTimeout(() => input.focus(), 100);
 <li><code><a title="BML.utils.utils.getTimestamp" href="#BML.utils.utils.getTimestamp">getTimestamp</a></code></li>
 <li><code><a title="BML.utils.utils.getTransform" href="#BML.utils.utils.getTransform">getTransform</a></code></li>
 <li><code><a title="BML.utils.utils.gzipFile" href="#BML.utils.utils.gzipFile">gzipFile</a></code></li>
+<li><code><a title="BML.utils.utils.ipVersion" href="#BML.utils.utils.ipVersion">ipVersion</a></code></li>
 <li><code><a title="BML.utils.utils.mkdirPath" href="#BML.utils.utils.mkdirPath">mkdirPath</a></code></li>
 <li><code><a title="BML.utils.utils.printAndLog" href="#BML.utils.utils.printAndLog">printAndLog</a></code></li>
 <li><code><a title="BML.utils.utils.printHelp" href="#BML.utils.utils.printHelp">printHelp</a></code></li>
@@ -1640,25 +1046,13 @@ setTimeout(() => input.focus(), 100);
 <li>
 <h4><code><a title="BML.utils.utils.MissingArg" href="#BML.utils.utils.MissingArg">MissingArg</a></code></h4>
 </li>
-<li>
-<h4><code><a title="BML.utils.utils.ProcessingQueue" href="#BML.utils.utils.ProcessingQueue">ProcessingQueue</a></code></h4>
-<ul class="two-column">
-<li><code><a title="BML.utils.utils.ProcessingQueue.addProcess" href="#BML.utils.utils.ProcessingQueue.addProcess">addProcess</a></code></li>
-<li><code><a title="BML.utils.utils.ProcessingQueue.formatLog" href="#BML.utils.utils.ProcessingQueue.formatLog">formatLog</a></code></li>
-<li><code><a title="BML.utils.utils.ProcessingQueue.run" href="#BML.utils.utils.ProcessingQueue.run">run</a></code></li>
-<li><code><a title="BML.utils.utils.ProcessingQueue.runLog" href="#BML.utils.utils.ProcessingQueue.runLog">runLog</a></code></li>
-<li><code><a title="BML.utils.utils.ProcessingQueue.runOnce" href="#BML.utils.utils.ProcessingQueue.runOnce">runOnce</a></code></li>
-<li><code><a title="BML.utils.utils.ProcessingQueue.stop" href="#BML.utils.utils.ProcessingQueue.stop">stop</a></code></li>
-<li><code><a title="BML.utils.utils.ProcessingQueue.waitUntilFree" href="#BML.utils.utils.ProcessingQueue.waitUntilFree">waitUntilFree</a></code></li>
-</ul>
-</li>
 </ul>
 </li>
 </ul>
 </nav>
 </main>
 <footer id="footer">
-<p>Generated by <a href="https://pdoc3.github.io/pdoc"><cite>pdoc</cite> 0.9.2</a>.</p>
+<p>Generated by <a href="https://pdoc3.github.io/pdoc"><cite>pdoc</cite> 0.9.1</a>.</p>
 </footer>
 </body>
 </html>

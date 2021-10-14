@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1" />
-<meta name="generator" content="pdoc 0.9.2" />
+<meta name="generator" content="pdoc 0.9.1" />
 <title>BML.data.routes API documentation</title>
 <meta name="description" content="" />
 <link rel="preload stylesheet" as="style" href="https://cdnjs.cloudflare.com/ajax/libs/10up-sanitize.css/11.0.1/sanitize.min.css" integrity="sha256-PK9q560IAAa6WVRRh76LtCaI8pjTJ2z11v0miyNNjrs=" crossorigin>
@@ -28,340 +28,167 @@
 </summary>
 <pre><code class="python">#!/usr/bin/env python3
 
-import sys, os, time
-from _pybgpstream import BGPStream, BGPRecord, BGPElem
-from threading import Thread
-import ipaddress as ip
-import json
-from BML.utils import utils
+import time, json
+from BML import utils
 
-class RoutesDump(Thread):
+def updateRoutes(routes, u):
 
-        def __init__(self):
+    if(u[&#39;type&#39;]==&#39;A&#39; or u[&#39;type&#39;]==&#39;W&#39; or u[&#39;type&#39;]==&#39;R&#39;):
 
-                Thread.__init__(self)
+        collector = u[&#39;collector&#39;]
+        peer = u[&#39;peer_asn&#39;]
+        prefix = u[&#39;fields&#39;][&#39;prefix&#39;]
 
-                self.startTime = -1
-                self.endTime = -1
+        if(u[&#39;type&#39;]==&#39;A&#39; or u[&#39;type&#39;]==&#39;R&#39;):
 
-                self.projects = [&#39;ris&#39;,&#39;routeviews&#39;]
-                self.collectors = []
-                self.ipVersion = [4,6]
+            if(prefix not in routes):
+                routes[prefix] = {}
+            if(collector not in routes[prefix]):
+                routes[prefix][collector] = {}
 
-                self.stream = BGPStream()
+            routes[prefix][collector][peer] = u[&#39;fields&#39;][&#39;as-path&#39;]
 
-                self.routes = {}
-                self.currentTime = -1
-                self.finished = False
-                self.terminate = False
+        elif(u[&#39;type&#39;]==&#39;W&#39;):
 
-                self.updates = None
-                self.updatesFilePath = None
+            if(prefix in routes and collector in routes[prefix] and  peer in routes[prefix][collector]):
+                del routes[prefix][collector][peer]
+                if(len(routes[prefix][collector])==0):
+                    del routes[prefix][collector]
+                if(len(routes[prefix])==0):
+                    del routes[prefix]
+                    
+    return(routes)
 
-        def setProjects(self, projects):
-                self.projects = projects
+def parseUpdate(lineSplited, header):
 
-        def setIpVersion(self, ipVersion):
-                self.ipVersion = ipVersion
+    u= {}
 
-        def setCollectors(self, collectors):
-                self.collectors = collectors
+    u[&#39;collector&#39;] = lineSplited[header[&#39;collector&#39;]]
+    u[&#39;dump_time&#39;] = lineSplited[header[&#39;dump_time&#39;]]
+    u[&#39;type&#39;] = lineSplited[header[&#39;type&#39;]]
+    u[&#39;time&#39;] = lineSplited[header[&#39;time&#39;]]
+    u[&#39;peer_address&#39;] = lineSplited[header[&#39;peer_address&#39;]]
+    u[&#39;peer_asn&#39;] = lineSplited[header[&#39;peer_asn&#39;]]
+    u[&#39;fields&#39;] = json.loads(&#34;,&#34;.join(lineSplited[header[&#39;fields&#39;]::]))
 
-        def setInterval(self, start, end):
-                self.startTime = start
-                self.endTime = end
+    return(u)
 
-        def setUpdates(self, updates):
-                self.updates = updates
+def getUpdatesInfos(updates):
+    
+    
+    headerLine = &#34;&#34;
+    firstLine = &#34;&#34;
+    lastLine = &#34;&#34;
+    
+    if(type(updates)==str):
+        lines = open(updates)
+    else:
+        lines = updates
+    
+    i = 0
+    for line in lines:
+        if(i==0):
+            headerLine = line[:-1].split(&#39;,&#39;)
+        if(i==1):
+            firstLine = line[:-1].split(&#39;,&#39;)
+        i+= 1
+    lastLine = line[:-1].split(&#39;,&#39;)
 
-        def setUpdatesFile(self, filePath):
-                self.updatesFilePath = filePath
+    header = utils.getIndexList(headerLine)
+    startTime = int(parseUpdate(firstLine, header)[&#34;time&#34;])
+    endTime = int(parseUpdate(lastLine, header)[&#34;time&#34;])
+    
+    if(type(updates)==str):
+        lines.close()
+    
+    return(header, startTime, endTime)
+    
+class RoutesSnapshot(utils.BmlProcess):
 
-        def startStream(self):
+    def __init__(self, updates, routes, outfolder, logFiles):
 
-                if(self.startTime!=-1 and self.endTime!=-1):
+        utils.BmlProcess.__init__(self, logFiles)
 
-                        for project in self.projects:
-                                self.stream.add_filter(&#39;project&#39;, project)
-
-                        if(len(self.collectors)&gt;0):
-                                for collector in self.collectors:
-                                        self.stream.add_filter(&#39;collector&#39;, collector)
-
-                        self.stream.add_interval_filter(self.startTime,self.endTime)
-                        self.stream.add_filter(&#39;record-type&#39;,&#39;updates&#39;)
-
-                        self.stream.start()
-                else:
-                        quit(&#34;Error: can&#39;t start stream, interval not set&#34;)
-
-        def getProgress(self):
-                progress = 0
-                if(self.currentTime!=-1):
-                        progress = (self.currentTime-self.startTime)*100//(self.endTime-self.startTime)
-                return(progress)
-                
-        def isRunning(self):
-                return(not self.finished)
-
-        def stop(self):
-                self.terminate = True
-
-
-        def dumpUpdate(self, u):
-
-                self.currentTime = int(u[&#39;time&#39;])
-
-                if(u[&#39;type&#39;]==&#39;A&#39; or u[&#39;type&#39;]==&#39;W&#39; or u[&#39;type&#39;]==&#39;R&#39;):
-
-                        collector = u[&#39;collector&#39;]
-                        peer = u[&#39;peer_asn&#39;]
-                        fields = json.loads(u[&#39;fields&#39;])
-                        prefix = fields[&#39;prefix&#39;]
-
-                        network = ip.ip_network(prefix)
-                        if(network.version in self.ipVersion):
-
-                                if(u[&#39;type&#39;]==&#39;A&#39; or u[&#39;type&#39;]==&#39;R&#39;):
-
-                                        if(prefix not in self.routes):
-                                                self.routes[prefix] = {}
-                                        if(collector not in self.routes[prefix]):
-                                                self.routes[prefix][collector] = {}
-
-                                        self.routes[prefix][collector][peer] = fields[&#39;as-path&#39;]
-
-
-                                elif(u[&#39;type&#39;]==&#39;W&#39;):
-
-                                        if(prefix in self.routes and collector in self.routes[prefix] and  peer in self.routes[prefix][collector]):
-                                                self.routes[prefix][collector][peer] = None
-
-
-        def buildRoutesDump(self):
-
-                record = BGPRecord()
-
-                while(self.stream.get_next_record(record) and not self.terminate):
-
-                        if record.status == &#34;valid&#34;:
-
-                                elem = record.get_next_elem()
-
-                                while(elem and not self.terminate):
-
-                                        u= {}
-
-                                        u[&#39;collector&#39;] = str(record.collector)
-                                        u[&#39;dump_time&#39;] = str(record.dump_time)
-                                        u[&#39;type&#39;] = str(elem.type)
-                                        u[&#39;time&#39;] = str(elem.time)
-                                        u[&#39;peer_address&#39;] = str(elem.peer_address)
-                                        u[&#39;peer_asn&#39;] = str(elem.peer_asn)
-                                        u[&#39;fields&#39;] = json.dumps(elem.fields)
-
-                                        self.dumpUpdate(u)
-                                        
-                                        elem = record.get_next_elem()
-
-                self.finished = True
-
-        def buildRoutesDumpFromUpdates(self):
-
-                if(len(self.updates)==1):
-                        return
-
-                headerLine = &#34;&#34;
-                firstLine = &#34;&#34;
-                lastLine = &#34;&#34;
-                
-                i = 0
-                for line in self.updates:
-                        if(i==0):
-                                headerLine = line
-                        if(i==1):
-                                firstLine = line
-
-                        i+= 1
-                lastLine = line
-
-                header = {}
-                headerSplited = headerLine.split(&#39;,&#39;)
-                nbItems = len(headerSplited)
-                for i in range(len(headerSplited)):
-                        header[headerSplited[i].replace(&#39;\n&#39;,&#39;&#39;)] = i
-
-                self.startTime = int(firstLine.split(&#39;,&#39;)[header[&#39;time&#39;]])
-                self.endTime = int(lastLine.split(&#39;,&#39;)[header[&#39;time&#39;]])
-
-                i=0
-                for line in self.updates:
-
-                        if(i!=0):
-
-                                lineSplited = line.split(&#39;,&#39;)
-                                lineSplited[nbItems-1] = &#39;,&#39;.join(lineSplited[nbItems-1::])
-
-                                u= {}
-
-                                u[&#39;collector&#39;] = lineSplited[header[&#39;collector&#39;]]
-                                u[&#39;dump_time&#39;] = lineSplited[header[&#39;dump_time&#39;]]
-                                u[&#39;type&#39;] = lineSplited[header[&#39;type&#39;]]
-                                u[&#39;time&#39;] = lineSplited[header[&#39;time&#39;]]
-                                u[&#39;peer_address&#39;] = lineSplited[header[&#39;peer_address&#39;]]
-                                u[&#39;peer_asn&#39;] = lineSplited[header[&#39;peer_asn&#39;]]
-                                u[&#39;fields&#39;] = lineSplited[header[&#39;fields&#39;]]
-
-                                self.dumpUpdate(u)
-
-                        i+=1
-                
-                self.finished = True
+        self.routes = routes
+        self.updates = updates
         
+        self.filePath = self.getFilePath(outfolder)
+    
+    def buildRoutesSnapshot(self):
 
-        def buildRoutesDumpFromUpdatesFile(self):
+        header, self.startProgress, self.endProgress = getUpdatesInfos(self.updates)
+        
+        if(type(self.updates)==str):
+            lines = open(self.updates)
+        else:
+            lines = self.updates
 
-                headerLine = &#34;&#34;
-                firstLine = &#34;&#34;
-                lastLine = &#34;&#34;
-                
-                with open(self.updatesFilePath) as file:
+        i=0
+        for line in lines:
+            
+            if(i!=0):
+                u= parseUpdate(line[:-1].split(&#39;,&#39;), header)
+                self.printProgress(int(u[&#39;time&#39;]))
+                self.routes = updateRoutes(self.routes, u)
+            i+=1
+        
+        if(type(self.updates)==str):
+            lines.close()
+            
+    def getFilePath(self, path):
+        if(path is None):
+            return(None)
+        else:
+            return(utils.mkdirPath(path) + &#34;routes.json&#34;)
 
-                        i = 0
-                        for line in file:
-                                if(i==0):
-                                        headerLine = line
-                                if(i==1):
-                                        firstLine = line
+    def save(self):
+        file = open(self.filePath,&#34;w&#34;)
+        json.dump(self.routes, file)
+        file.close()
 
-                                i+= 1
+    def execute(self):
+        
+        timeAtStart = time.time() 
+        
+        self.log(&#34;#################&#34;)
+        self.log(&#34;# Route Snapshot&#34;)
+        self.log(&#34;#################&#34;)
 
+        if(type(self.updates)==str):
+            self.log(&#34;Updates file: &#34; + self.updates)
+        else:
+            self.log(&#34;Nb. of updates: &#34; + str(len(self.updates)))
 
-                        lastLine = line
-                        file.close()
+        self.log(&#34;Nb. of prefix in initial route snapshot: &#34; + str(len(self.routes)))
 
-                header = {}
-                headerSplited = headerLine.split(&#39;,&#39;)
-                nbItems = len(headerSplited)
-                for i in range(len(headerSplited)):
-                        header[headerSplited[i].replace(&#39;\n&#39;,&#39;&#39;)] = i
+        self.buildRoutesSnapshot()
+            
+        self.log(&#34;Computation time: &#34; + utils.timeFormat(time.time()-timeAtStart))
+        self.log(&#34;Nb. of prefix in route snapshot: &#34; + str(len(self.routes.keys())))
 
-                self.startTime = int(firstLine.split(&#39;,&#39;)[header[&#39;time&#39;]])
-                self.endTime = int(lastLine.split(&#39;,&#39;)[header[&#39;time&#39;]])
+        if(self.filePath!=None):
+            self.save()
+            self.log(&#34;Route snapshot saved to: &#34; + self.filePath)
 
-                with open(self.updatesFilePath) as file:
-
-                        i=0
-                        for line in file:
-
-                                if(i!=0):
-
-                                        lineSplited = line.split(&#39;,&#39;)
-                                        lineSplited[nbItems-1] = &#39;,&#39;.join(lineSplited[nbItems-1::])
-
-                                        u= {}
-
-                                        u[&#39;collector&#39;] = lineSplited[header[&#39;collector&#39;]]
-                                        u[&#39;dump_time&#39;] = lineSplited[header[&#39;dump_time&#39;]]
-                                        u[&#39;type&#39;] = lineSplited[header[&#39;type&#39;]]
-                                        u[&#39;time&#39;] = lineSplited[header[&#39;time&#39;]]
-                                        u[&#39;peer_address&#39;] = lineSplited[header[&#39;peer_address&#39;]]
-                                        u[&#39;peer_asn&#39;] = lineSplited[header[&#39;peer_asn&#39;]]
-                                        u[&#39;fields&#39;] = lineSplited[header[&#39;fields&#39;]]
-
-
-                                        self.dumpUpdate(u)
-
-                                i+=1
-                
-                self.finished = True
-
-
-        def getOutputFilename(self):
-                return(&#34;routes.json&#34;)
-
-
-        def saveTo(self, path):
-
-                filePath = utils.mkdirPath(path) + self.getOutputFilename()
-
-                file = open(filePath,&#34;w&#34;)
-                json.dump(self.routes, file)
-                file.close()
-
-                return(filePath)
-
-
-        def run(self):
-
-                if(self.updates!=None):
-                        self.buildRoutesDumpFromUpdates()
-                elif(self.updatesFilePath!=None):
-                        self.buildRoutesDumpFromUpdatesFile()
-                else:
-                        self.startStream()
-                        self.buildRoutesDump()
-
-
-def dumpRoutes(start, end, folder, collectors, routes=None, logFiles=[], saveRoutes=True, updates=None, updatesDumpFile=None, returnRoutes=False, projects=[&#34;ris&#34;], ipVersion=[4,6]):
-
-        logFile = open(utils.mkdirPath(folder)+&#34;log_routes_dump.log&#34;,&#39;w&#39;)
+def dumpRoutes(updates, routes=None, outFolder=None, logFiles=None):
+    
+    if(routes is None):
+        routes = {}
+        
+    if(logFiles is None):
+        logFiles = []
+    
+    if(outFolder!=None):
+        logFile = open(utils.mkdirPath(outFolder)+&#34;routes_snapshot.log&#34;,&#39;w&#39;)
         logFiles.append(logFile)
+    
+    routesSnapshot = RoutesSnapshot(updates, routes, outFolder, logFiles)
+    routesSnapshot.execute()
 
-        routesDump = RoutesDump()
-
-        if(routes):
-                routesDump.routes = routes
-
-        try:
-
-                routesDump.setInterval(start,end)
-                routesDump.setProjects(projects)
-                routesDump.setCollectors(collectors)
-                routesDump.setUpdates(updates)
-                routesDump.setUpdatesFile(updatesDumpFile)
-                routesDump.setIpVersion(ipVersion)
-                
-                utils.printAndLog(&#34;#############&#34;, logFiles)
-                utils.printAndLog(&#34;# Route dump&#34;, logFiles)
-                utils.printAndLog(&#34;#############&#34;, logFiles)
-
-                if(updates!=None):
-                        utils.printAndLog(&#34;Nb. of Updates: &#34; + str(len(routesDump.updates)), logFiles)
-                elif(updatesDumpFile!=None):
-                        utils.printAndLog(&#34;Updates file: &#34; + str(routesDump.updatesFilePath), logFiles)
-                else:
-                        utils.printAndLog(&#34;Start time: &#34; + str(routesDump.startTime), logFiles)
-                        utils.printAndLog(&#34;End time: &#34; + str(routesDump.endTime), logFiles)
-                        utils.printAndLog(&#34;Duration: &#34; + utils.timeFormat(routesDump.endTime-routesDump.startTime), logFiles)
-                        utils.printAndLog(&#34;Projects: &#34; + str(routesDump.projects), logFiles)
-                        utils.printAndLog(&#34;Collectors: &#34; + str(routesDump.collectors), logFiles)
-                utils.printAndLog(&#34;Ip version: &#34; + str(routesDump.ipVersion), logFiles)
-
-                timeAtStart = time.time() 
-
-                routesDump.start()
-                
-                utils.printProgress(routesDump, logFiles)
-
-                utils.printAndLog(&#34;Computation time: &#34; + utils.timeFormat(time.time()-timeAtStart), logFiles)
-                utils.printAndLog(&#34;Nb. of prefix in route dump: &#34; + str(len(routesDump.routes.keys())), logFiles)
-
-                if(saveRoutes):
-                        filePath = routesDump.saveTo(folder)
-                        utils.printAndLog(&#34;Route dump saved to: &#34; + filePath, logFiles)
-
-        except KeyboardInterrupt:
-                utils.printAndLog(&#39;User interrupted, ask route dump to stop...&#39;, logFiles)
-                routesDump.stop()
-                quit()
-
+    if(outFolder!=None):
         logFile.close()
 
-        if(returnRoutes):
-                return(routesDump.routes)
-        else:
-                return(filePath)</code></pre>
+    return(routesSnapshot.routes, routesSnapshot.filePath)</code></pre>
 </details>
 </section>
 <section>
@@ -372,7 +199,7 @@ def dumpRoutes(start, end, folder, collectors, routes=None, logFiles=[], saveRou
 <h2 class="section-title" id="header-functions">Functions</h2>
 <dl>
 <dt id="BML.data.routes.dumpRoutes"><code class="name flex">
-<span>def <span class="ident">dumpRoutes</span></span>(<span>start, end, folder, collectors, routes=None, logFiles=[], saveRoutes=True, updates=None, updatesDumpFile=None, returnRoutes=False, projects=['ris'], ipVersion=[4, 6])</span>
+<span>def <span class="ident">dumpRoutes</span></span>(<span>updates, routes=None, outFolder=None, logFiles=None)</span>
 </code></dt>
 <dd>
 <div class="desc"></div>
@@ -380,65 +207,127 @@ def dumpRoutes(start, end, folder, collectors, routes=None, logFiles=[], saveRou
 <summary>
 <span>Expand source code</span>
 </summary>
-<pre><code class="python">def dumpRoutes(start, end, folder, collectors, routes=None, logFiles=[], saveRoutes=True, updates=None, updatesDumpFile=None, returnRoutes=False, projects=[&#34;ris&#34;], ipVersion=[4,6]):
-
-        logFile = open(utils.mkdirPath(folder)+&#34;log_routes_dump.log&#34;,&#39;w&#39;)
+<pre><code class="python">def dumpRoutes(updates, routes=None, outFolder=None, logFiles=None):
+    
+    if(routes is None):
+        routes = {}
+        
+    if(logFiles is None):
+        logFiles = []
+    
+    if(outFolder!=None):
+        logFile = open(utils.mkdirPath(outFolder)+&#34;routes_snapshot.log&#34;,&#39;w&#39;)
         logFiles.append(logFile)
+    
+    routesSnapshot = RoutesSnapshot(updates, routes, outFolder, logFiles)
+    routesSnapshot.execute()
 
-        routesDump = RoutesDump()
-
-        if(routes):
-                routesDump.routes = routes
-
-        try:
-
-                routesDump.setInterval(start,end)
-                routesDump.setProjects(projects)
-                routesDump.setCollectors(collectors)
-                routesDump.setUpdates(updates)
-                routesDump.setUpdatesFile(updatesDumpFile)
-                routesDump.setIpVersion(ipVersion)
-                
-                utils.printAndLog(&#34;#############&#34;, logFiles)
-                utils.printAndLog(&#34;# Route dump&#34;, logFiles)
-                utils.printAndLog(&#34;#############&#34;, logFiles)
-
-                if(updates!=None):
-                        utils.printAndLog(&#34;Nb. of Updates: &#34; + str(len(routesDump.updates)), logFiles)
-                elif(updatesDumpFile!=None):
-                        utils.printAndLog(&#34;Updates file: &#34; + str(routesDump.updatesFilePath), logFiles)
-                else:
-                        utils.printAndLog(&#34;Start time: &#34; + str(routesDump.startTime), logFiles)
-                        utils.printAndLog(&#34;End time: &#34; + str(routesDump.endTime), logFiles)
-                        utils.printAndLog(&#34;Duration: &#34; + utils.timeFormat(routesDump.endTime-routesDump.startTime), logFiles)
-                        utils.printAndLog(&#34;Projects: &#34; + str(routesDump.projects), logFiles)
-                        utils.printAndLog(&#34;Collectors: &#34; + str(routesDump.collectors), logFiles)
-                utils.printAndLog(&#34;Ip version: &#34; + str(routesDump.ipVersion), logFiles)
-
-                timeAtStart = time.time() 
-
-                routesDump.start()
-                
-                utils.printProgress(routesDump, logFiles)
-
-                utils.printAndLog(&#34;Computation time: &#34; + utils.timeFormat(time.time()-timeAtStart), logFiles)
-                utils.printAndLog(&#34;Nb. of prefix in route dump: &#34; + str(len(routesDump.routes.keys())), logFiles)
-
-                if(saveRoutes):
-                        filePath = routesDump.saveTo(folder)
-                        utils.printAndLog(&#34;Route dump saved to: &#34; + filePath, logFiles)
-
-        except KeyboardInterrupt:
-                utils.printAndLog(&#39;User interrupted, ask route dump to stop...&#39;, logFiles)
-                routesDump.stop()
-                quit()
-
+    if(outFolder!=None):
         logFile.close()
 
-        if(returnRoutes):
-                return(routesDump.routes)
-        else:
-                return(filePath)</code></pre>
+    return(routesSnapshot.routes, routesSnapshot.filePath)</code></pre>
+</details>
+</dd>
+<dt id="BML.data.routes.getUpdatesInfos"><code class="name flex">
+<span>def <span class="ident">getUpdatesInfos</span></span>(<span>updates)</span>
+</code></dt>
+<dd>
+<div class="desc"></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def getUpdatesInfos(updates):
+    
+    
+    headerLine = &#34;&#34;
+    firstLine = &#34;&#34;
+    lastLine = &#34;&#34;
+    
+    if(type(updates)==str):
+        lines = open(updates)
+    else:
+        lines = updates
+    
+    i = 0
+    for line in lines:
+        if(i==0):
+            headerLine = line[:-1].split(&#39;,&#39;)
+        if(i==1):
+            firstLine = line[:-1].split(&#39;,&#39;)
+        i+= 1
+    lastLine = line[:-1].split(&#39;,&#39;)
+
+    header = utils.getIndexList(headerLine)
+    startTime = int(parseUpdate(firstLine, header)[&#34;time&#34;])
+    endTime = int(parseUpdate(lastLine, header)[&#34;time&#34;])
+    
+    if(type(updates)==str):
+        lines.close()
+    
+    return(header, startTime, endTime)</code></pre>
+</details>
+</dd>
+<dt id="BML.data.routes.parseUpdate"><code class="name flex">
+<span>def <span class="ident">parseUpdate</span></span>(<span>lineSplited, header)</span>
+</code></dt>
+<dd>
+<div class="desc"></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def parseUpdate(lineSplited, header):
+
+    u= {}
+
+    u[&#39;collector&#39;] = lineSplited[header[&#39;collector&#39;]]
+    u[&#39;dump_time&#39;] = lineSplited[header[&#39;dump_time&#39;]]
+    u[&#39;type&#39;] = lineSplited[header[&#39;type&#39;]]
+    u[&#39;time&#39;] = lineSplited[header[&#39;time&#39;]]
+    u[&#39;peer_address&#39;] = lineSplited[header[&#39;peer_address&#39;]]
+    u[&#39;peer_asn&#39;] = lineSplited[header[&#39;peer_asn&#39;]]
+    u[&#39;fields&#39;] = json.loads(&#34;,&#34;.join(lineSplited[header[&#39;fields&#39;]::]))
+
+    return(u)</code></pre>
+</details>
+</dd>
+<dt id="BML.data.routes.updateRoutes"><code class="name flex">
+<span>def <span class="ident">updateRoutes</span></span>(<span>routes, u)</span>
+</code></dt>
+<dd>
+<div class="desc"></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def updateRoutes(routes, u):
+
+    if(u[&#39;type&#39;]==&#39;A&#39; or u[&#39;type&#39;]==&#39;W&#39; or u[&#39;type&#39;]==&#39;R&#39;):
+
+        collector = u[&#39;collector&#39;]
+        peer = u[&#39;peer_asn&#39;]
+        prefix = u[&#39;fields&#39;][&#39;prefix&#39;]
+
+        if(u[&#39;type&#39;]==&#39;A&#39; or u[&#39;type&#39;]==&#39;R&#39;):
+
+            if(prefix not in routes):
+                routes[prefix] = {}
+            if(collector not in routes[prefix]):
+                routes[prefix][collector] = {}
+
+            routes[prefix][collector][peer] = u[&#39;fields&#39;][&#39;as-path&#39;]
+
+        elif(u[&#39;type&#39;]==&#39;W&#39;):
+
+            if(prefix in routes and collector in routes[prefix] and  peer in routes[prefix][collector]):
+                del routes[prefix][collector][peer]
+                if(len(routes[prefix][collector])==0):
+                    del routes[prefix][collector]
+                if(len(routes[prefix])==0):
+                    del routes[prefix]
+                    
+    return(routes)</code></pre>
 </details>
 </dd>
 </dl>
@@ -446,306 +335,9 @@ def dumpRoutes(start, end, folder, collectors, routes=None, logFiles=[], saveRou
 <section>
 <h2 class="section-title" id="header-classes">Classes</h2>
 <dl>
-<dt id="BML.data.routes.RoutesDump"><code class="flex name class">
-<span>class <span class="ident">RoutesDump</span></span>
-</code></dt>
-<dd>
-<div class="desc"><p>A class that represents a thread of control.</p>
-<p>This class can be safely subclassed in a limited fashion. There are two ways
-to specify the activity: by passing a callable object to the constructor, or
-by overriding the run() method in a subclass.</p>
-<p>This constructor should always be called with keyword arguments. Arguments are:</p>
-<p><em>group</em> should be None; reserved for future extension when a ThreadGroup
-class is implemented.</p>
-<p><em>target</em> is the callable object to be invoked by the run()
-method. Defaults to None, meaning nothing is called.</p>
-<p><em>name</em> is the thread name. By default, a unique name is constructed of
-the form "Thread-N" where N is a small decimal number.</p>
-<p><em>args</em> is the argument tuple for the target invocation. Defaults to ().</p>
-<p><em>kwargs</em> is a dictionary of keyword arguments for the target
-invocation. Defaults to {}.</p>
-<p>If a subclass overrides the constructor, it must make sure to invoke
-the base class constructor (Thread.<strong>init</strong>()) before doing anything
-else to the thread.</p></div>
-<details class="source">
-<summary>
-<span>Expand source code</span>
-</summary>
-<pre><code class="python">class RoutesDump(Thread):
-
-        def __init__(self):
-
-                Thread.__init__(self)
-
-                self.startTime = -1
-                self.endTime = -1
-
-                self.projects = [&#39;ris&#39;,&#39;routeviews&#39;]
-                self.collectors = []
-                self.ipVersion = [4,6]
-
-                self.stream = BGPStream()
-
-                self.routes = {}
-                self.currentTime = -1
-                self.finished = False
-                self.terminate = False
-
-                self.updates = None
-                self.updatesFilePath = None
-
-        def setProjects(self, projects):
-                self.projects = projects
-
-        def setIpVersion(self, ipVersion):
-                self.ipVersion = ipVersion
-
-        def setCollectors(self, collectors):
-                self.collectors = collectors
-
-        def setInterval(self, start, end):
-                self.startTime = start
-                self.endTime = end
-
-        def setUpdates(self, updates):
-                self.updates = updates
-
-        def setUpdatesFile(self, filePath):
-                self.updatesFilePath = filePath
-
-        def startStream(self):
-
-                if(self.startTime!=-1 and self.endTime!=-1):
-
-                        for project in self.projects:
-                                self.stream.add_filter(&#39;project&#39;, project)
-
-                        if(len(self.collectors)&gt;0):
-                                for collector in self.collectors:
-                                        self.stream.add_filter(&#39;collector&#39;, collector)
-
-                        self.stream.add_interval_filter(self.startTime,self.endTime)
-                        self.stream.add_filter(&#39;record-type&#39;,&#39;updates&#39;)
-
-                        self.stream.start()
-                else:
-                        quit(&#34;Error: can&#39;t start stream, interval not set&#34;)
-
-        def getProgress(self):
-                progress = 0
-                if(self.currentTime!=-1):
-                        progress = (self.currentTime-self.startTime)*100//(self.endTime-self.startTime)
-                return(progress)
-                
-        def isRunning(self):
-                return(not self.finished)
-
-        def stop(self):
-                self.terminate = True
-
-
-        def dumpUpdate(self, u):
-
-                self.currentTime = int(u[&#39;time&#39;])
-
-                if(u[&#39;type&#39;]==&#39;A&#39; or u[&#39;type&#39;]==&#39;W&#39; or u[&#39;type&#39;]==&#39;R&#39;):
-
-                        collector = u[&#39;collector&#39;]
-                        peer = u[&#39;peer_asn&#39;]
-                        fields = json.loads(u[&#39;fields&#39;])
-                        prefix = fields[&#39;prefix&#39;]
-
-                        network = ip.ip_network(prefix)
-                        if(network.version in self.ipVersion):
-
-                                if(u[&#39;type&#39;]==&#39;A&#39; or u[&#39;type&#39;]==&#39;R&#39;):
-
-                                        if(prefix not in self.routes):
-                                                self.routes[prefix] = {}
-                                        if(collector not in self.routes[prefix]):
-                                                self.routes[prefix][collector] = {}
-
-                                        self.routes[prefix][collector][peer] = fields[&#39;as-path&#39;]
-
-
-                                elif(u[&#39;type&#39;]==&#39;W&#39;):
-
-                                        if(prefix in self.routes and collector in self.routes[prefix] and  peer in self.routes[prefix][collector]):
-                                                self.routes[prefix][collector][peer] = None
-
-
-        def buildRoutesDump(self):
-
-                record = BGPRecord()
-
-                while(self.stream.get_next_record(record) and not self.terminate):
-
-                        if record.status == &#34;valid&#34;:
-
-                                elem = record.get_next_elem()
-
-                                while(elem and not self.terminate):
-
-                                        u= {}
-
-                                        u[&#39;collector&#39;] = str(record.collector)
-                                        u[&#39;dump_time&#39;] = str(record.dump_time)
-                                        u[&#39;type&#39;] = str(elem.type)
-                                        u[&#39;time&#39;] = str(elem.time)
-                                        u[&#39;peer_address&#39;] = str(elem.peer_address)
-                                        u[&#39;peer_asn&#39;] = str(elem.peer_asn)
-                                        u[&#39;fields&#39;] = json.dumps(elem.fields)
-
-                                        self.dumpUpdate(u)
-                                        
-                                        elem = record.get_next_elem()
-
-                self.finished = True
-
-        def buildRoutesDumpFromUpdates(self):
-
-                if(len(self.updates)==1):
-                        return
-
-                headerLine = &#34;&#34;
-                firstLine = &#34;&#34;
-                lastLine = &#34;&#34;
-                
-                i = 0
-                for line in self.updates:
-                        if(i==0):
-                                headerLine = line
-                        if(i==1):
-                                firstLine = line
-
-                        i+= 1
-                lastLine = line
-
-                header = {}
-                headerSplited = headerLine.split(&#39;,&#39;)
-                nbItems = len(headerSplited)
-                for i in range(len(headerSplited)):
-                        header[headerSplited[i].replace(&#39;\n&#39;,&#39;&#39;)] = i
-
-                self.startTime = int(firstLine.split(&#39;,&#39;)[header[&#39;time&#39;]])
-                self.endTime = int(lastLine.split(&#39;,&#39;)[header[&#39;time&#39;]])
-
-                i=0
-                for line in self.updates:
-
-                        if(i!=0):
-
-                                lineSplited = line.split(&#39;,&#39;)
-                                lineSplited[nbItems-1] = &#39;,&#39;.join(lineSplited[nbItems-1::])
-
-                                u= {}
-
-                                u[&#39;collector&#39;] = lineSplited[header[&#39;collector&#39;]]
-                                u[&#39;dump_time&#39;] = lineSplited[header[&#39;dump_time&#39;]]
-                                u[&#39;type&#39;] = lineSplited[header[&#39;type&#39;]]
-                                u[&#39;time&#39;] = lineSplited[header[&#39;time&#39;]]
-                                u[&#39;peer_address&#39;] = lineSplited[header[&#39;peer_address&#39;]]
-                                u[&#39;peer_asn&#39;] = lineSplited[header[&#39;peer_asn&#39;]]
-                                u[&#39;fields&#39;] = lineSplited[header[&#39;fields&#39;]]
-
-                                self.dumpUpdate(u)
-
-                        i+=1
-                
-                self.finished = True
-        
-
-        def buildRoutesDumpFromUpdatesFile(self):
-
-                headerLine = &#34;&#34;
-                firstLine = &#34;&#34;
-                lastLine = &#34;&#34;
-                
-                with open(self.updatesFilePath) as file:
-
-                        i = 0
-                        for line in file:
-                                if(i==0):
-                                        headerLine = line
-                                if(i==1):
-                                        firstLine = line
-
-                                i+= 1
-
-
-                        lastLine = line
-                        file.close()
-
-                header = {}
-                headerSplited = headerLine.split(&#39;,&#39;)
-                nbItems = len(headerSplited)
-                for i in range(len(headerSplited)):
-                        header[headerSplited[i].replace(&#39;\n&#39;,&#39;&#39;)] = i
-
-                self.startTime = int(firstLine.split(&#39;,&#39;)[header[&#39;time&#39;]])
-                self.endTime = int(lastLine.split(&#39;,&#39;)[header[&#39;time&#39;]])
-
-                with open(self.updatesFilePath) as file:
-
-                        i=0
-                        for line in file:
-
-                                if(i!=0):
-
-                                        lineSplited = line.split(&#39;,&#39;)
-                                        lineSplited[nbItems-1] = &#39;,&#39;.join(lineSplited[nbItems-1::])
-
-                                        u= {}
-
-                                        u[&#39;collector&#39;] = lineSplited[header[&#39;collector&#39;]]
-                                        u[&#39;dump_time&#39;] = lineSplited[header[&#39;dump_time&#39;]]
-                                        u[&#39;type&#39;] = lineSplited[header[&#39;type&#39;]]
-                                        u[&#39;time&#39;] = lineSplited[header[&#39;time&#39;]]
-                                        u[&#39;peer_address&#39;] = lineSplited[header[&#39;peer_address&#39;]]
-                                        u[&#39;peer_asn&#39;] = lineSplited[header[&#39;peer_asn&#39;]]
-                                        u[&#39;fields&#39;] = lineSplited[header[&#39;fields&#39;]]
-
-
-                                        self.dumpUpdate(u)
-
-                                i+=1
-                
-                self.finished = True
-
-
-        def getOutputFilename(self):
-                return(&#34;routes.json&#34;)
-
-
-        def saveTo(self, path):
-
-                filePath = utils.mkdirPath(path) + self.getOutputFilename()
-
-                file = open(filePath,&#34;w&#34;)
-                json.dump(self.routes, file)
-                file.close()
-
-                return(filePath)
-
-
-        def run(self):
-
-                if(self.updates!=None):
-                        self.buildRoutesDumpFromUpdates()
-                elif(self.updatesFilePath!=None):
-                        self.buildRoutesDumpFromUpdatesFile()
-                else:
-                        self.startStream()
-                        self.buildRoutesDump()</code></pre>
-</details>
-<h3>Ancestors</h3>
-<ul class="hlist">
-<li>threading.Thread</li>
-</ul>
-<h3>Methods</h3>
-<dl>
-<dt id="BML.data.routes.RoutesDump.buildRoutesDump"><code class="name flex">
-<span>def <span class="ident">buildRoutesDump</span></span>(<span>self)</span>
+<dt id="BML.data.routes.RoutesSnapshot"><code class="flex name class">
+<span>class <span class="ident">RoutesSnapshot</span></span>
+<span>(</span><span>updates, routes, outfolder, logFiles)</span>
 </code></dt>
 <dd>
 <div class="desc"></div>
@@ -753,398 +345,81 @@ else to the thread.</p></div>
 <summary>
 <span>Expand source code</span>
 </summary>
-<pre><code class="python">def buildRoutesDump(self):
+<pre><code class="python">class RoutesSnapshot(utils.BmlProcess):
 
-        record = BGPRecord()
+    def __init__(self, updates, routes, outfolder, logFiles):
 
-        while(self.stream.get_next_record(record) and not self.terminate):
+        utils.BmlProcess.__init__(self, logFiles)
 
-                if record.status == &#34;valid&#34;:
-
-                        elem = record.get_next_elem()
-
-                        while(elem and not self.terminate):
-
-                                u= {}
-
-                                u[&#39;collector&#39;] = str(record.collector)
-                                u[&#39;dump_time&#39;] = str(record.dump_time)
-                                u[&#39;type&#39;] = str(elem.type)
-                                u[&#39;time&#39;] = str(elem.time)
-                                u[&#39;peer_address&#39;] = str(elem.peer_address)
-                                u[&#39;peer_asn&#39;] = str(elem.peer_asn)
-                                u[&#39;fields&#39;] = json.dumps(elem.fields)
-
-                                self.dumpUpdate(u)
-                                
-                                elem = record.get_next_elem()
-
-        self.finished = True</code></pre>
-</details>
-</dd>
-<dt id="BML.data.routes.RoutesDump.buildRoutesDumpFromUpdates"><code class="name flex">
-<span>def <span class="ident">buildRoutesDumpFromUpdates</span></span>(<span>self)</span>
-</code></dt>
-<dd>
-<div class="desc"></div>
-<details class="source">
-<summary>
-<span>Expand source code</span>
-</summary>
-<pre><code class="python">def buildRoutesDumpFromUpdates(self):
-
-        if(len(self.updates)==1):
-                return
-
-        headerLine = &#34;&#34;
-        firstLine = &#34;&#34;
-        lastLine = &#34;&#34;
+        self.routes = routes
+        self.updates = updates
         
-        i = 0
-        for line in self.updates:
-                if(i==0):
-                        headerLine = line
-                if(i==1):
-                        firstLine = line
+        self.filePath = self.getFilePath(outfolder)
+    
+    def buildRoutesSnapshot(self):
 
-                i+= 1
-        lastLine = line
-
-        header = {}
-        headerSplited = headerLine.split(&#39;,&#39;)
-        nbItems = len(headerSplited)
-        for i in range(len(headerSplited)):
-                header[headerSplited[i].replace(&#39;\n&#39;,&#39;&#39;)] = i
-
-        self.startTime = int(firstLine.split(&#39;,&#39;)[header[&#39;time&#39;]])
-        self.endTime = int(lastLine.split(&#39;,&#39;)[header[&#39;time&#39;]])
+        header, self.startProgress, self.endProgress = getUpdatesInfos(self.updates)
+        
+        if(type(self.updates)==str):
+            lines = open(self.updates)
+        else:
+            lines = self.updates
 
         i=0
-        for line in self.updates:
-
-                if(i!=0):
-
-                        lineSplited = line.split(&#39;,&#39;)
-                        lineSplited[nbItems-1] = &#39;,&#39;.join(lineSplited[nbItems-1::])
-
-                        u= {}
-
-                        u[&#39;collector&#39;] = lineSplited[header[&#39;collector&#39;]]
-                        u[&#39;dump_time&#39;] = lineSplited[header[&#39;dump_time&#39;]]
-                        u[&#39;type&#39;] = lineSplited[header[&#39;type&#39;]]
-                        u[&#39;time&#39;] = lineSplited[header[&#39;time&#39;]]
-                        u[&#39;peer_address&#39;] = lineSplited[header[&#39;peer_address&#39;]]
-                        u[&#39;peer_asn&#39;] = lineSplited[header[&#39;peer_asn&#39;]]
-                        u[&#39;fields&#39;] = lineSplited[header[&#39;fields&#39;]]
-
-                        self.dumpUpdate(u)
-
-                i+=1
+        for line in lines:
+            
+            if(i!=0):
+                u= parseUpdate(line[:-1].split(&#39;,&#39;), header)
+                self.printProgress(int(u[&#39;time&#39;]))
+                self.routes = updateRoutes(self.routes, u)
+            i+=1
         
-        self.finished = True</code></pre>
-</details>
-</dd>
-<dt id="BML.data.routes.RoutesDump.buildRoutesDumpFromUpdatesFile"><code class="name flex">
-<span>def <span class="ident">buildRoutesDumpFromUpdatesFile</span></span>(<span>self)</span>
-</code></dt>
-<dd>
-<div class="desc"></div>
-<details class="source">
-<summary>
-<span>Expand source code</span>
-</summary>
-<pre><code class="python">def buildRoutesDumpFromUpdatesFile(self):
-
-        headerLine = &#34;&#34;
-        firstLine = &#34;&#34;
-        lastLine = &#34;&#34;
-        
-        with open(self.updatesFilePath) as file:
-
-                i = 0
-                for line in file:
-                        if(i==0):
-                                headerLine = line
-                        if(i==1):
-                                firstLine = line
-
-                        i+= 1
-
-
-                lastLine = line
-                file.close()
-
-        header = {}
-        headerSplited = headerLine.split(&#39;,&#39;)
-        nbItems = len(headerSplited)
-        for i in range(len(headerSplited)):
-                header[headerSplited[i].replace(&#39;\n&#39;,&#39;&#39;)] = i
-
-        self.startTime = int(firstLine.split(&#39;,&#39;)[header[&#39;time&#39;]])
-        self.endTime = int(lastLine.split(&#39;,&#39;)[header[&#39;time&#39;]])
-
-        with open(self.updatesFilePath) as file:
-
-                i=0
-                for line in file:
-
-                        if(i!=0):
-
-                                lineSplited = line.split(&#39;,&#39;)
-                                lineSplited[nbItems-1] = &#39;,&#39;.join(lineSplited[nbItems-1::])
-
-                                u= {}
-
-                                u[&#39;collector&#39;] = lineSplited[header[&#39;collector&#39;]]
-                                u[&#39;dump_time&#39;] = lineSplited[header[&#39;dump_time&#39;]]
-                                u[&#39;type&#39;] = lineSplited[header[&#39;type&#39;]]
-                                u[&#39;time&#39;] = lineSplited[header[&#39;time&#39;]]
-                                u[&#39;peer_address&#39;] = lineSplited[header[&#39;peer_address&#39;]]
-                                u[&#39;peer_asn&#39;] = lineSplited[header[&#39;peer_asn&#39;]]
-                                u[&#39;fields&#39;] = lineSplited[header[&#39;fields&#39;]]
-
-
-                                self.dumpUpdate(u)
-
-                        i+=1
-        
-        self.finished = True</code></pre>
-</details>
-</dd>
-<dt id="BML.data.routes.RoutesDump.dumpUpdate"><code class="name flex">
-<span>def <span class="ident">dumpUpdate</span></span>(<span>self, u)</span>
-</code></dt>
-<dd>
-<div class="desc"></div>
-<details class="source">
-<summary>
-<span>Expand source code</span>
-</summary>
-<pre><code class="python">def dumpUpdate(self, u):
-
-        self.currentTime = int(u[&#39;time&#39;])
-
-        if(u[&#39;type&#39;]==&#39;A&#39; or u[&#39;type&#39;]==&#39;W&#39; or u[&#39;type&#39;]==&#39;R&#39;):
-
-                collector = u[&#39;collector&#39;]
-                peer = u[&#39;peer_asn&#39;]
-                fields = json.loads(u[&#39;fields&#39;])
-                prefix = fields[&#39;prefix&#39;]
-
-                network = ip.ip_network(prefix)
-                if(network.version in self.ipVersion):
-
-                        if(u[&#39;type&#39;]==&#39;A&#39; or u[&#39;type&#39;]==&#39;R&#39;):
-
-                                if(prefix not in self.routes):
-                                        self.routes[prefix] = {}
-                                if(collector not in self.routes[prefix]):
-                                        self.routes[prefix][collector] = {}
-
-                                self.routes[prefix][collector][peer] = fields[&#39;as-path&#39;]
-
-
-                        elif(u[&#39;type&#39;]==&#39;W&#39;):
-
-                                if(prefix in self.routes and collector in self.routes[prefix] and  peer in self.routes[prefix][collector]):
-                                        self.routes[prefix][collector][peer] = None</code></pre>
-</details>
-</dd>
-<dt id="BML.data.routes.RoutesDump.getOutputFilename"><code class="name flex">
-<span>def <span class="ident">getOutputFilename</span></span>(<span>self)</span>
-</code></dt>
-<dd>
-<div class="desc"></div>
-<details class="source">
-<summary>
-<span>Expand source code</span>
-</summary>
-<pre><code class="python">def getOutputFilename(self):
-        return(&#34;routes.json&#34;)</code></pre>
-</details>
-</dd>
-<dt id="BML.data.routes.RoutesDump.getProgress"><code class="name flex">
-<span>def <span class="ident">getProgress</span></span>(<span>self)</span>
-</code></dt>
-<dd>
-<div class="desc"></div>
-<details class="source">
-<summary>
-<span>Expand source code</span>
-</summary>
-<pre><code class="python">def getProgress(self):
-        progress = 0
-        if(self.currentTime!=-1):
-                progress = (self.currentTime-self.startTime)*100//(self.endTime-self.startTime)
-        return(progress)</code></pre>
-</details>
-</dd>
-<dt id="BML.data.routes.RoutesDump.isRunning"><code class="name flex">
-<span>def <span class="ident">isRunning</span></span>(<span>self)</span>
-</code></dt>
-<dd>
-<div class="desc"></div>
-<details class="source">
-<summary>
-<span>Expand source code</span>
-</summary>
-<pre><code class="python">def isRunning(self):
-        return(not self.finished)</code></pre>
-</details>
-</dd>
-<dt id="BML.data.routes.RoutesDump.run"><code class="name flex">
-<span>def <span class="ident">run</span></span>(<span>self)</span>
-</code></dt>
-<dd>
-<div class="desc"><p>Method representing the thread's activity.</p>
-<p>You may override this method in a subclass. The standard run() method
-invokes the callable object passed to the object's constructor as the
-target argument, if any, with sequential and keyword arguments taken
-from the args and kwargs arguments, respectively.</p></div>
-<details class="source">
-<summary>
-<span>Expand source code</span>
-</summary>
-<pre><code class="python">def run(self):
-
-        if(self.updates!=None):
-                self.buildRoutesDumpFromUpdates()
-        elif(self.updatesFilePath!=None):
-                self.buildRoutesDumpFromUpdatesFile()
+        if(type(self.updates)==str):
+            lines.close()
+            
+    def getFilePath(self, path):
+        if(path is None):
+            return(None)
         else:
-                self.startStream()
-                self.buildRoutesDump()</code></pre>
-</details>
-</dd>
-<dt id="BML.data.routes.RoutesDump.saveTo"><code class="name flex">
-<span>def <span class="ident">saveTo</span></span>(<span>self, path)</span>
-</code></dt>
-<dd>
-<div class="desc"></div>
-<details class="source">
-<summary>
-<span>Expand source code</span>
-</summary>
-<pre><code class="python">def saveTo(self, path):
+            return(utils.mkdirPath(path) + &#34;routes.json&#34;)
 
-        filePath = utils.mkdirPath(path) + self.getOutputFilename()
-
-        file = open(filePath,&#34;w&#34;)
+    def save(self):
+        file = open(self.filePath,&#34;w&#34;)
         json.dump(self.routes, file)
         file.close()
 
-        return(filePath)</code></pre>
-</details>
-</dd>
-<dt id="BML.data.routes.RoutesDump.setCollectors"><code class="name flex">
-<span>def <span class="ident">setCollectors</span></span>(<span>self, collectors)</span>
-</code></dt>
-<dd>
-<div class="desc"></div>
-<details class="source">
-<summary>
-<span>Expand source code</span>
-</summary>
-<pre><code class="python">def setCollectors(self, collectors):
-        self.collectors = collectors</code></pre>
-</details>
-</dd>
-<dt id="BML.data.routes.RoutesDump.setInterval"><code class="name flex">
-<span>def <span class="ident">setInterval</span></span>(<span>self, start, end)</span>
-</code></dt>
-<dd>
-<div class="desc"></div>
-<details class="source">
-<summary>
-<span>Expand source code</span>
-</summary>
-<pre><code class="python">def setInterval(self, start, end):
-        self.startTime = start
-        self.endTime = end</code></pre>
-</details>
-</dd>
-<dt id="BML.data.routes.RoutesDump.setIpVersion"><code class="name flex">
-<span>def <span class="ident">setIpVersion</span></span>(<span>self, ipVersion)</span>
-</code></dt>
-<dd>
-<div class="desc"></div>
-<details class="source">
-<summary>
-<span>Expand source code</span>
-</summary>
-<pre><code class="python">def setIpVersion(self, ipVersion):
-        self.ipVersion = ipVersion</code></pre>
-</details>
-</dd>
-<dt id="BML.data.routes.RoutesDump.setProjects"><code class="name flex">
-<span>def <span class="ident">setProjects</span></span>(<span>self, projects)</span>
-</code></dt>
-<dd>
-<div class="desc"></div>
-<details class="source">
-<summary>
-<span>Expand source code</span>
-</summary>
-<pre><code class="python">def setProjects(self, projects):
-        self.projects = projects</code></pre>
-</details>
-</dd>
-<dt id="BML.data.routes.RoutesDump.setUpdates"><code class="name flex">
-<span>def <span class="ident">setUpdates</span></span>(<span>self, updates)</span>
-</code></dt>
-<dd>
-<div class="desc"></div>
-<details class="source">
-<summary>
-<span>Expand source code</span>
-</summary>
-<pre><code class="python">def setUpdates(self, updates):
-        self.updates = updates</code></pre>
-</details>
-</dd>
-<dt id="BML.data.routes.RoutesDump.setUpdatesFile"><code class="name flex">
-<span>def <span class="ident">setUpdatesFile</span></span>(<span>self, filePath)</span>
-</code></dt>
-<dd>
-<div class="desc"></div>
-<details class="source">
-<summary>
-<span>Expand source code</span>
-</summary>
-<pre><code class="python">def setUpdatesFile(self, filePath):
-        self.updatesFilePath = filePath</code></pre>
-</details>
-</dd>
-<dt id="BML.data.routes.RoutesDump.startStream"><code class="name flex">
-<span>def <span class="ident">startStream</span></span>(<span>self)</span>
-</code></dt>
-<dd>
-<div class="desc"></div>
-<details class="source">
-<summary>
-<span>Expand source code</span>
-</summary>
-<pre><code class="python">def startStream(self):
+    def execute(self):
+        
+        timeAtStart = time.time() 
+        
+        self.log(&#34;#################&#34;)
+        self.log(&#34;# Route Snapshot&#34;)
+        self.log(&#34;#################&#34;)
 
-        if(self.startTime!=-1 and self.endTime!=-1):
-
-                for project in self.projects:
-                        self.stream.add_filter(&#39;project&#39;, project)
-
-                if(len(self.collectors)&gt;0):
-                        for collector in self.collectors:
-                                self.stream.add_filter(&#39;collector&#39;, collector)
-
-                self.stream.add_interval_filter(self.startTime,self.endTime)
-                self.stream.add_filter(&#39;record-type&#39;,&#39;updates&#39;)
-
-                self.stream.start()
+        if(type(self.updates)==str):
+            self.log(&#34;Updates file: &#34; + self.updates)
         else:
-                quit(&#34;Error: can&#39;t start stream, interval not set&#34;)</code></pre>
+            self.log(&#34;Nb. of updates: &#34; + str(len(self.updates)))
+
+        self.log(&#34;Nb. of prefix in initial route snapshot: &#34; + str(len(self.routes)))
+
+        self.buildRoutesSnapshot()
+            
+        self.log(&#34;Computation time: &#34; + utils.timeFormat(time.time()-timeAtStart))
+        self.log(&#34;Nb. of prefix in route snapshot: &#34; + str(len(self.routes.keys())))
+
+        if(self.filePath!=None):
+            self.save()
+            self.log(&#34;Route snapshot saved to: &#34; + self.filePath)</code></pre>
 </details>
-</dd>
-<dt id="BML.data.routes.RoutesDump.stop"><code class="name flex">
-<span>def <span class="ident">stop</span></span>(<span>self)</span>
+<h3>Ancestors</h3>
+<ul class="hlist">
+<li><a title="BML.utils.bml_process.BmlProcess" href="../utils/bml_process.html#BML.utils.bml_process.BmlProcess">BmlProcess</a></li>
+</ul>
+<h3>Methods</h3>
+<dl>
+<dt id="BML.data.routes.RoutesSnapshot.buildRoutesSnapshot"><code class="name flex">
+<span>def <span class="ident">buildRoutesSnapshot</span></span>(<span>self)</span>
 </code></dt>
 <dd>
 <div class="desc"></div>
@@ -1152,8 +427,91 @@ from the args and kwargs arguments, respectively.</p></div>
 <summary>
 <span>Expand source code</span>
 </summary>
-<pre><code class="python">def stop(self):
-        self.terminate = True</code></pre>
+<pre><code class="python">def buildRoutesSnapshot(self):
+
+    header, self.startProgress, self.endProgress = getUpdatesInfos(self.updates)
+    
+    if(type(self.updates)==str):
+        lines = open(self.updates)
+    else:
+        lines = self.updates
+
+    i=0
+    for line in lines:
+        
+        if(i!=0):
+            u= parseUpdate(line[:-1].split(&#39;,&#39;), header)
+            self.printProgress(int(u[&#39;time&#39;]))
+            self.routes = updateRoutes(self.routes, u)
+        i+=1
+    
+    if(type(self.updates)==str):
+        lines.close()</code></pre>
+</details>
+</dd>
+<dt id="BML.data.routes.RoutesSnapshot.execute"><code class="name flex">
+<span>def <span class="ident">execute</span></span>(<span>self)</span>
+</code></dt>
+<dd>
+<div class="desc"></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def execute(self):
+    
+    timeAtStart = time.time() 
+    
+    self.log(&#34;#################&#34;)
+    self.log(&#34;# Route Snapshot&#34;)
+    self.log(&#34;#################&#34;)
+
+    if(type(self.updates)==str):
+        self.log(&#34;Updates file: &#34; + self.updates)
+    else:
+        self.log(&#34;Nb. of updates: &#34; + str(len(self.updates)))
+
+    self.log(&#34;Nb. of prefix in initial route snapshot: &#34; + str(len(self.routes)))
+
+    self.buildRoutesSnapshot()
+        
+    self.log(&#34;Computation time: &#34; + utils.timeFormat(time.time()-timeAtStart))
+    self.log(&#34;Nb. of prefix in route snapshot: &#34; + str(len(self.routes.keys())))
+
+    if(self.filePath!=None):
+        self.save()
+        self.log(&#34;Route snapshot saved to: &#34; + self.filePath)</code></pre>
+</details>
+</dd>
+<dt id="BML.data.routes.RoutesSnapshot.getFilePath"><code class="name flex">
+<span>def <span class="ident">getFilePath</span></span>(<span>self, path)</span>
+</code></dt>
+<dd>
+<div class="desc"></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def getFilePath(self, path):
+    if(path is None):
+        return(None)
+    else:
+        return(utils.mkdirPath(path) + &#34;routes.json&#34;)</code></pre>
+</details>
+</dd>
+<dt id="BML.data.routes.RoutesSnapshot.save"><code class="name flex">
+<span>def <span class="ident">save</span></span>(<span>self)</span>
+</code></dt>
+<dd>
+<div class="desc"></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def save(self):
+    file = open(self.filePath,&#34;w&#34;)
+    json.dump(self.routes, file)
+    file.close()</code></pre>
 </details>
 </dd>
 </dl>
@@ -1162,7 +520,7 @@ from the args and kwargs arguments, respectively.</p></div>
 </section>
 </article>
 <nav id="sidebar">
-<a href="" style="font-size:4em;color:#058">BML</a>
+<a href="https://kevinhoarau.github.io/BML/" style="font-size:4em;color:#058">BML</a>
 <hr style="margin-top:30px;margin-bottom:30px;">
 <form>
 <input id="lunr-search" name="q" placeholder="🔎 Search ..." aria-label="Search"
@@ -1198,7 +556,7 @@ const query = new URL(window.location).searchParams.get('q');
 if (query)
 search(query);
 function search(query) {
-const url = '../../doc-search.html#' + encodeURIComponent(query);
+const url = '../search.html#' + encodeURIComponent(query);
 new tingle.modal({
 cssClass: ['modal-dialog'],
 onClose: () => {
@@ -1223,30 +581,20 @@ setTimeout(() => input.focus(), 100);
 <li><h3><a href="#header-functions">Functions</a></h3>
 <ul class="">
 <li><code><a title="BML.data.routes.dumpRoutes" href="#BML.data.routes.dumpRoutes">dumpRoutes</a></code></li>
+<li><code><a title="BML.data.routes.getUpdatesInfos" href="#BML.data.routes.getUpdatesInfos">getUpdatesInfos</a></code></li>
+<li><code><a title="BML.data.routes.parseUpdate" href="#BML.data.routes.parseUpdate">parseUpdate</a></code></li>
+<li><code><a title="BML.data.routes.updateRoutes" href="#BML.data.routes.updateRoutes">updateRoutes</a></code></li>
 </ul>
 </li>
 <li><h3><a href="#header-classes">Classes</a></h3>
 <ul>
 <li>
-<h4><code><a title="BML.data.routes.RoutesDump" href="#BML.data.routes.RoutesDump">RoutesDump</a></code></h4>
+<h4><code><a title="BML.data.routes.RoutesSnapshot" href="#BML.data.routes.RoutesSnapshot">RoutesSnapshot</a></code></h4>
 <ul class="">
-<li><code><a title="BML.data.routes.RoutesDump.buildRoutesDump" href="#BML.data.routes.RoutesDump.buildRoutesDump">buildRoutesDump</a></code></li>
-<li><code><a title="BML.data.routes.RoutesDump.buildRoutesDumpFromUpdates" href="#BML.data.routes.RoutesDump.buildRoutesDumpFromUpdates">buildRoutesDumpFromUpdates</a></code></li>
-<li><code><a title="BML.data.routes.RoutesDump.buildRoutesDumpFromUpdatesFile" href="#BML.data.routes.RoutesDump.buildRoutesDumpFromUpdatesFile">buildRoutesDumpFromUpdatesFile</a></code></li>
-<li><code><a title="BML.data.routes.RoutesDump.dumpUpdate" href="#BML.data.routes.RoutesDump.dumpUpdate">dumpUpdate</a></code></li>
-<li><code><a title="BML.data.routes.RoutesDump.getOutputFilename" href="#BML.data.routes.RoutesDump.getOutputFilename">getOutputFilename</a></code></li>
-<li><code><a title="BML.data.routes.RoutesDump.getProgress" href="#BML.data.routes.RoutesDump.getProgress">getProgress</a></code></li>
-<li><code><a title="BML.data.routes.RoutesDump.isRunning" href="#BML.data.routes.RoutesDump.isRunning">isRunning</a></code></li>
-<li><code><a title="BML.data.routes.RoutesDump.run" href="#BML.data.routes.RoutesDump.run">run</a></code></li>
-<li><code><a title="BML.data.routes.RoutesDump.saveTo" href="#BML.data.routes.RoutesDump.saveTo">saveTo</a></code></li>
-<li><code><a title="BML.data.routes.RoutesDump.setCollectors" href="#BML.data.routes.RoutesDump.setCollectors">setCollectors</a></code></li>
-<li><code><a title="BML.data.routes.RoutesDump.setInterval" href="#BML.data.routes.RoutesDump.setInterval">setInterval</a></code></li>
-<li><code><a title="BML.data.routes.RoutesDump.setIpVersion" href="#BML.data.routes.RoutesDump.setIpVersion">setIpVersion</a></code></li>
-<li><code><a title="BML.data.routes.RoutesDump.setProjects" href="#BML.data.routes.RoutesDump.setProjects">setProjects</a></code></li>
-<li><code><a title="BML.data.routes.RoutesDump.setUpdates" href="#BML.data.routes.RoutesDump.setUpdates">setUpdates</a></code></li>
-<li><code><a title="BML.data.routes.RoutesDump.setUpdatesFile" href="#BML.data.routes.RoutesDump.setUpdatesFile">setUpdatesFile</a></code></li>
-<li><code><a title="BML.data.routes.RoutesDump.startStream" href="#BML.data.routes.RoutesDump.startStream">startStream</a></code></li>
-<li><code><a title="BML.data.routes.RoutesDump.stop" href="#BML.data.routes.RoutesDump.stop">stop</a></code></li>
+<li><code><a title="BML.data.routes.RoutesSnapshot.buildRoutesSnapshot" href="#BML.data.routes.RoutesSnapshot.buildRoutesSnapshot">buildRoutesSnapshot</a></code></li>
+<li><code><a title="BML.data.routes.RoutesSnapshot.execute" href="#BML.data.routes.RoutesSnapshot.execute">execute</a></code></li>
+<li><code><a title="BML.data.routes.RoutesSnapshot.getFilePath" href="#BML.data.routes.RoutesSnapshot.getFilePath">getFilePath</a></code></li>
+<li><code><a title="BML.data.routes.RoutesSnapshot.save" href="#BML.data.routes.RoutesSnapshot.save">save</a></code></li>
 </ul>
 </li>
 </ul>
@@ -1255,7 +603,7 @@ setTimeout(() => input.focus(), 100);
 </nav>
 </main>
 <footer id="footer">
-<p>Generated by <a href="https://pdoc3.github.io/pdoc"><cite>pdoc</cite> 0.9.2</a>.</p>
+<p>Generated by <a href="https://pdoc3.github.io/pdoc"><cite>pdoc</cite> 0.9.1</a>.</p>
 </footer>
 </body>
 </html>

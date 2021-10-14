@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1" />
-<meta name="generator" content="pdoc 0.9.2" />
+<meta name="generator" content="pdoc 0.9.1" />
 <title>BML.transform.nodes_features API documentation</title>
 <meta name="description" content="" />
 <link rel="preload stylesheet" as="style" href="https://cdnjs.cloudflare.com/ajax/libs/10up-sanitize.css/11.0.1/sanitize.min.css" integrity="sha256-PK9q560IAAa6WVRRh76LtCaI8pjTJ2z11v0miyNNjrs=" crossorigin>
@@ -26,7 +26,7 @@
 <summary>
 <span>Expand source code</span>
 </summary>
-<pre><code class="python">from BML.transform.graph import Graph
+<pre><code class="python">from BML.transform import Graph, BaseTransform
 from BML.utils import ProcessingQueue, timeFormat
 import multiprocessing
 
@@ -212,7 +212,7 @@ def connectivity(G, nodes): # too slow, see approx version
         v.append(np.mean([nx.connectivity.local_node_connectivity(G,n,t) for t in nodes]))
     return(valuesDict(v, nodes))
 
-def computeFeatures(features, computationTimes=False, verbose=False):
+def computeFeatures(features, verbose=False):
     
     results = {}
     times = {}
@@ -223,37 +223,31 @@ def computeFeatures(features, computationTimes=False, verbose=False):
             print(&#34;Start:%s&#34; % (key))
         s = time.time()
         results[key] = function(*args)
-        times[key] = time.time() - s
         if(verbose):
-            print(&#34;End:%s (%s)&#34; % (key, timeFormat(times[key])))
-
-    if(computationTimes):
-        results[&#34;computation_times&#34;] = times
+            print(&#34;End:%s (%s)&#34; % (key, timeFormat(time.time()-s)))
     
     return(results)
 
 
-def run(function, results, times, key, verbose,*args):
+def run(function, results, key, verbose,*args):
     if(verbose):
         print(&#34;Start:%s&#34; % (key))
     s = time.time()
     results[key] = function(*args)
-    times[key] = time.time() - s
     if(verbose):
-        print(&#34;End:%s (%s)&#34; % (key, timeFormat(times[key])))
+        print(&#34;End:%s (%s)&#34; % (key, timeFormat(time.time()-s)))
     
 
-def computeFeaturesParallelized(features, nbProcess, computationTimes=False, verbose=False):
+def computeFeaturesParallelized(features, nbProcess, verbose=False):
     
     manager = multiprocessing.Manager()
     results = manager.dict()
-    times = manager.dict()
     
     pq = ProcessingQueue(nbProcess=nbProcess)
     
     for key, value in features.items():
         function, *args = value
-        pq.addProcess(target=run, args=(function, results, times, key, verbose,*args))
+        pq.addProcess(target=run, args=(function, results, key, verbose,*args))
     
     pq.run()
     
@@ -261,9 +255,6 @@ def computeFeaturesParallelized(features, nbProcess, computationTimes=False, ver
     for k in list(features.keys()):
         r_copy[k] = results[k].copy()
         del results[k] 
-    
-    if(computationTimes):
-        r_copy[&#34;computation_times2&#34;] = times.copy()
     
     return(r_copy)
 
@@ -281,16 +272,21 @@ def removedExcludedFeatures(features, excluded, included):
 
 class NodesFeatures(Graph):
     
-    def __init__(self):
-        Graph.__init__(self)
+    fileExtension = &#34;.json&#34;
+    
+    def __init__(self, primingFile, dataFile, params, outFolder, logFiles):
+        
         self.params[&#34;use_networkit&#34;] = True
         self.params[&#34;all_nodes&#34;] = True
         self.params[&#34;nodes&#34;] = None
         self.params[&#34;exclude_features&#34;] = [&#34;load&#34;] # Excluded by default, too slow; ignored if include_features not empty
         self.params[&#34;include_features&#34;] = [] # all features by default
-        self.params[&#34;computation_times&#34;] = False
         self.params[&#34;verbose&#34;] = False
+
+        Graph.__init__(self, primingFile, dataFile, params, outFolder, logFiles)
     
+    def save(self):
+        BaseTransform.save(self)
     
     def transforms(self, index, G):
 
@@ -328,7 +324,7 @@ class NodesFeatures(Graph):
             features[&#34;average_shortest_path_length&#34;] = (average_shortest_path_length, G, nodes)
 
         features = removedExcludedFeatures(features, self.params[&#34;exclude_features&#34;], self.params[&#34;include_features&#34;])
-        results.update(computeFeaturesParallelized(features, self.params[&#34;nbProcess&#34;], self.params[&#34;computation_times&#34;], self.params[&#34;verbose&#34;]))
+        results.update(computeFeaturesParallelized(features, self.params[&#34;nbProcess&#34;], self.params[&#34;verbose&#34;]))
 
         if(self.params[&#34;use_networkit&#34;]):
             Gnk = nx2nk(G)
@@ -345,7 +341,7 @@ class NodesFeatures(Graph):
             features[&#34;average_shortest_path_length&#34;] = (average_shortest_path_length_nk, G, Gnk, nodes)
 
             features = removedExcludedFeatures(features, self.params[&#34;exclude_features&#34;], self.params[&#34;include_features&#34;])
-            results.update(computeFeatures(features, self.params[&#34;computation_times&#34;], self.params[&#34;verbose&#34;]))
+            results.update(computeFeatures(features, self.params[&#34;verbose&#34;]))
         
         return(results)</code></pre>
 </details>
@@ -533,7 +529,7 @@ class NodesFeatures(Graph):
 </details>
 </dd>
 <dt id="BML.transform.nodes_features.computeFeatures"><code class="name flex">
-<span>def <span class="ident">computeFeatures</span></span>(<span>features, computationTimes=False, verbose=False)</span>
+<span>def <span class="ident">computeFeatures</span></span>(<span>features, verbose=False)</span>
 </code></dt>
 <dd>
 <div class="desc"></div>
@@ -541,7 +537,7 @@ class NodesFeatures(Graph):
 <summary>
 <span>Expand source code</span>
 </summary>
-<pre><code class="python">def computeFeatures(features, computationTimes=False, verbose=False):
+<pre><code class="python">def computeFeatures(features, verbose=False):
     
     results = {}
     times = {}
@@ -552,18 +548,14 @@ class NodesFeatures(Graph):
             print(&#34;Start:%s&#34; % (key))
         s = time.time()
         results[key] = function(*args)
-        times[key] = time.time() - s
         if(verbose):
-            print(&#34;End:%s (%s)&#34; % (key, timeFormat(times[key])))
-
-    if(computationTimes):
-        results[&#34;computation_times&#34;] = times
+            print(&#34;End:%s (%s)&#34; % (key, timeFormat(time.time()-s)))
     
     return(results)</code></pre>
 </details>
 </dd>
 <dt id="BML.transform.nodes_features.computeFeaturesParallelized"><code class="name flex">
-<span>def <span class="ident">computeFeaturesParallelized</span></span>(<span>features, nbProcess, computationTimes=False, verbose=False)</span>
+<span>def <span class="ident">computeFeaturesParallelized</span></span>(<span>features, nbProcess, verbose=False)</span>
 </code></dt>
 <dd>
 <div class="desc"></div>
@@ -571,17 +563,16 @@ class NodesFeatures(Graph):
 <summary>
 <span>Expand source code</span>
 </summary>
-<pre><code class="python">def computeFeaturesParallelized(features, nbProcess, computationTimes=False, verbose=False):
+<pre><code class="python">def computeFeaturesParallelized(features, nbProcess, verbose=False):
     
     manager = multiprocessing.Manager()
     results = manager.dict()
-    times = manager.dict()
     
     pq = ProcessingQueue(nbProcess=nbProcess)
     
     for key, value in features.items():
         function, *args = value
-        pq.addProcess(target=run, args=(function, results, times, key, verbose,*args))
+        pq.addProcess(target=run, args=(function, results, key, verbose,*args))
     
     pq.run()
     
@@ -589,9 +580,6 @@ class NodesFeatures(Graph):
     for k in list(features.keys()):
         r_copy[k] = results[k].copy()
         del results[k] 
-    
-    if(computationTimes):
-        r_copy[&#34;computation_times2&#34;] = times.copy()
     
     return(r_copy)</code></pre>
 </details>
@@ -932,7 +920,7 @@ class NodesFeatures(Graph):
 </details>
 </dd>
 <dt id="BML.transform.nodes_features.run"><code class="name flex">
-<span>def <span class="ident">run</span></span>(<span>function, results, times, key, verbose, *args)</span>
+<span>def <span class="ident">run</span></span>(<span>function, results, key, verbose, *args)</span>
 </code></dt>
 <dd>
 <div class="desc"></div>
@@ -940,14 +928,13 @@ class NodesFeatures(Graph):
 <summary>
 <span>Expand source code</span>
 </summary>
-<pre><code class="python">def run(function, results, times, key, verbose,*args):
+<pre><code class="python">def run(function, results, key, verbose,*args):
     if(verbose):
         print(&#34;Start:%s&#34; % (key))
     s = time.time()
     results[key] = function(*args)
-    times[key] = time.time() - s
     if(verbose):
-        print(&#34;End:%s (%s)&#34; % (key, timeFormat(times[key])))</code></pre>
+        print(&#34;End:%s (%s)&#34; % (key, timeFormat(time.time()-s)))</code></pre>
 </details>
 </dd>
 <dt id="BML.transform.nodes_features.square_clustering"><code class="name flex">
@@ -1012,41 +999,31 @@ class NodesFeatures(Graph):
 <dl>
 <dt id="BML.transform.nodes_features.NodesFeatures"><code class="flex name class">
 <span>class <span class="ident">NodesFeatures</span></span>
+<span>(</span><span>primingFile, dataFile, params, outFolder, logFiles)</span>
 </code></dt>
 <dd>
-<div class="desc"><p>A class that represents a thread of control.</p>
-<p>This class can be safely subclassed in a limited fashion. There are two ways
-to specify the activity: by passing a callable object to the constructor, or
-by overriding the run() method in a subclass.</p>
-<p>This constructor should always be called with keyword arguments. Arguments are:</p>
-<p><em>group</em> should be None; reserved for future extension when a ThreadGroup
-class is implemented.</p>
-<p><em>target</em> is the callable object to be invoked by the run()
-method. Defaults to None, meaning nothing is called.</p>
-<p><em>name</em> is the thread name. By default, a unique name is constructed of
-the form "Thread-N" where N is a small decimal number.</p>
-<p><em>args</em> is the argument tuple for the target invocation. Defaults to ().</p>
-<p><em>kwargs</em> is a dictionary of keyword arguments for the target
-invocation. Defaults to {}.</p>
-<p>If a subclass overrides the constructor, it must make sure to invoke
-the base class constructor (Thread.<strong>init</strong>()) before doing anything
-else to the thread.</p></div>
+<div class="desc"></div>
 <details class="source">
 <summary>
 <span>Expand source code</span>
 </summary>
 <pre><code class="python">class NodesFeatures(Graph):
     
-    def __init__(self):
-        Graph.__init__(self)
+    fileExtension = &#34;.json&#34;
+    
+    def __init__(self, primingFile, dataFile, params, outFolder, logFiles):
+        
         self.params[&#34;use_networkit&#34;] = True
         self.params[&#34;all_nodes&#34;] = True
         self.params[&#34;nodes&#34;] = None
         self.params[&#34;exclude_features&#34;] = [&#34;load&#34;] # Excluded by default, too slow; ignored if include_features not empty
         self.params[&#34;include_features&#34;] = [] # all features by default
-        self.params[&#34;computation_times&#34;] = False
         self.params[&#34;verbose&#34;] = False
+
+        Graph.__init__(self, primingFile, dataFile, params, outFolder, logFiles)
     
+    def save(self):
+        BaseTransform.save(self)
     
     def transforms(self, index, G):
 
@@ -1084,7 +1061,7 @@ else to the thread.</p></div>
             features[&#34;average_shortest_path_length&#34;] = (average_shortest_path_length, G, nodes)
 
         features = removedExcludedFeatures(features, self.params[&#34;exclude_features&#34;], self.params[&#34;include_features&#34;])
-        results.update(computeFeaturesParallelized(features, self.params[&#34;nbProcess&#34;], self.params[&#34;computation_times&#34;], self.params[&#34;verbose&#34;]))
+        results.update(computeFeaturesParallelized(features, self.params[&#34;nbProcess&#34;], self.params[&#34;verbose&#34;]))
 
         if(self.params[&#34;use_networkit&#34;]):
             Gnk = nx2nk(G)
@@ -1101,7 +1078,7 @@ else to the thread.</p></div>
             features[&#34;average_shortest_path_length&#34;] = (average_shortest_path_length_nk, G, Gnk, nodes)
 
             features = removedExcludedFeatures(features, self.params[&#34;exclude_features&#34;], self.params[&#34;include_features&#34;])
-            results.update(computeFeatures(features, self.params[&#34;computation_times&#34;], self.params[&#34;verbose&#34;]))
+            results.update(computeFeatures(features, self.params[&#34;verbose&#34;]))
         
         return(results)</code></pre>
 </details>
@@ -1110,10 +1087,34 @@ else to the thread.</p></div>
 <li><a title="BML.transform.graph.Graph" href="graph.html#BML.transform.graph.Graph">Graph</a></li>
 <li><a title="BML.transform.base_transform.BaseTransformParallelized" href="base_transform.html#BML.transform.base_transform.BaseTransformParallelized">BaseTransformParallelized</a></li>
 <li><a title="BML.transform.base_transform.BaseTransform" href="base_transform.html#BML.transform.base_transform.BaseTransform">BaseTransform</a></li>
-<li>threading.Thread</li>
+<li><a title="BML.utils.bml_process.BmlProcess" href="../utils/bml_process.html#BML.utils.bml_process.BmlProcess">BmlProcess</a></li>
 </ul>
+<h3>Subclasses</h3>
+<ul class="hlist">
+<li><a title="BML.transform.graph_features.GraphFeatures" href="graph_features.html#BML.transform.graph_features.GraphFeatures">GraphFeatures</a></li>
+</ul>
+<h3>Class variables</h3>
+<dl>
+<dt id="BML.transform.nodes_features.NodesFeatures.fileExtension"><code class="name">var <span class="ident">fileExtension</span></code></dt>
+<dd>
+<div class="desc"></div>
+</dd>
+</dl>
 <h3>Methods</h3>
 <dl>
+<dt id="BML.transform.nodes_features.NodesFeatures.save"><code class="name flex">
+<span>def <span class="ident">save</span></span>(<span>self)</span>
+</code></dt>
+<dd>
+<div class="desc"></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def save(self):
+    BaseTransform.save(self)</code></pre>
+</details>
+</dd>
 <dt id="BML.transform.nodes_features.NodesFeatures.transforms"><code class="name flex">
 <span>def <span class="ident">transforms</span></span>(<span>self, index, G)</span>
 </code></dt>
@@ -1159,7 +1160,7 @@ else to the thread.</p></div>
         features[&#34;average_shortest_path_length&#34;] = (average_shortest_path_length, G, nodes)
 
     features = removedExcludedFeatures(features, self.params[&#34;exclude_features&#34;], self.params[&#34;include_features&#34;])
-    results.update(computeFeaturesParallelized(features, self.params[&#34;nbProcess&#34;], self.params[&#34;computation_times&#34;], self.params[&#34;verbose&#34;]))
+    results.update(computeFeaturesParallelized(features, self.params[&#34;nbProcess&#34;], self.params[&#34;verbose&#34;]))
 
     if(self.params[&#34;use_networkit&#34;]):
         Gnk = nx2nk(G)
@@ -1176,26 +1177,18 @@ else to the thread.</p></div>
         features[&#34;average_shortest_path_length&#34;] = (average_shortest_path_length_nk, G, Gnk, nodes)
 
         features = removedExcludedFeatures(features, self.params[&#34;exclude_features&#34;], self.params[&#34;include_features&#34;])
-        results.update(computeFeatures(features, self.params[&#34;computation_times&#34;], self.params[&#34;verbose&#34;]))
+        results.update(computeFeatures(features, self.params[&#34;verbose&#34;]))
     
     return(results)</code></pre>
 </details>
 </dd>
 </dl>
-<h3>Inherited members</h3>
-<ul class="hlist">
-<li><code><b><a title="BML.transform.graph.Graph" href="graph.html#BML.transform.graph.Graph">Graph</a></b></code>:
-<ul class="hlist">
-<li><code><a title="BML.transform.graph.Graph.run" href="base_transform.html#BML.transform.base_transform.BaseTransform.run">run</a></code></li>
-</ul>
-</li>
-</ul>
 </dd>
 </dl>
 </section>
 </article>
 <nav id="sidebar">
-<a href="" style="font-size:4em;color:#058">BML</a>
+<a href="https://kevinhoarau.github.io/BML/" style="font-size:4em;color:#058">BML</a>
 <hr style="margin-top:30px;margin-bottom:30px;">
 <form>
 <input id="lunr-search" name="q" placeholder="🔎 Search ..." aria-label="Search"
@@ -1231,7 +1224,7 @@ const query = new URL(window.location).searchParams.get('q');
 if (query)
 search(query);
 function search(query) {
-const url = '../../doc-search.html#' + encodeURIComponent(query);
+const url = '../search.html#' + encodeURIComponent(query);
 new tingle.modal({
 cssClass: ['modal-dialog'],
 onClose: () => {
@@ -1303,6 +1296,8 @@ setTimeout(() => input.focus(), 100);
 <li>
 <h4><code><a title="BML.transform.nodes_features.NodesFeatures" href="#BML.transform.nodes_features.NodesFeatures">NodesFeatures</a></code></h4>
 <ul class="">
+<li><code><a title="BML.transform.nodes_features.NodesFeatures.fileExtension" href="#BML.transform.nodes_features.NodesFeatures.fileExtension">fileExtension</a></code></li>
+<li><code><a title="BML.transform.nodes_features.NodesFeatures.save" href="#BML.transform.nodes_features.NodesFeatures.save">save</a></code></li>
 <li><code><a title="BML.transform.nodes_features.NodesFeatures.transforms" href="#BML.transform.nodes_features.NodesFeatures.transforms">transforms</a></code></li>
 </ul>
 </li>
@@ -1312,7 +1307,7 @@ setTimeout(() => input.focus(), 100);
 </nav>
 </main>
 <footer id="footer">
-<p>Generated by <a href="https://pdoc3.github.io/pdoc"><cite>pdoc</cite> 0.9.2</a>.</p>
+<p>Generated by <a href="https://pdoc3.github.io/pdoc"><cite>pdoc</cite> 0.9.1</a>.</p>
 </footer>
 </body>
 </html>
