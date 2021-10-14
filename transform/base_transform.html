@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1" />
-<meta name="generator" content="pdoc 0.9.2" />
+<meta name="generator" content="pdoc 0.9.1" />
 <title>BML.transform.base_transform API documentation</title>
 <meta name="description" content="" />
 <link rel="preload stylesheet" as="style" href="https://cdnjs.cloudflare.com/ajax/libs/10up-sanitize.css/11.0.1/sanitize.min.css" integrity="sha256-PK9q560IAAa6WVRRh76LtCaI8pjTJ2z11v0miyNNjrs=" crossorigin>
@@ -28,250 +28,151 @@
 </summary>
 <pre><code class="python"> #!/usr/bin/env python3
 
-import os, time
-from threading import Thread
+import os, time, multiprocessing
 import ujson as json
-from BML.utils import utils
-from BML.data.routes import dumpRoutes
+from BML import utils
 from BML.utils import ProcessingQueue
-import multiprocessing
-
+from BML.data.routes import dumpRoutes, getUpdatesInfos, parseUpdate, updateRoutes
 from math import ceil
-import ipaddress as ip
 
-import copy
-
-from sys import getsizeof
-
-class BaseTransform(Thread):
+class BaseTransform(utils.BmlProcess):
 
     computeRoutes = True
+    computeUpdates = True
     loadPrimingData = True
+    fileExtension = &#34;.json&#34;
+    params = {}
 
-    def __init__(self):
+    def __init__(self, primingFile, dataFile, params, outFolder, logFiles):
 
-        Thread.__init__(self)
+        utils.BmlProcess.__init__(self, logFiles)
+        
+        self.params[&#34;Name&#34;] = None
+        self.params[&#34;Period&#34;] = 5
+        self.params[&#34;NbSnapshots&#34;] = None
+        self.params[&#34;Collectors&#34;] = []
+        self.params[&#34;IpVersion&#34;] = [4,6]
+        self.params[&#34;SkipIfExist&#34;] = True
+        self.params[&#34;Gzip&#34;] = False
+        
+        self.setParams(params)
+        
+        self.primingFile = primingFile
+        self.dataFile = dataFile
+        self.outFolder = outFolder
+        self.filePath = self.getFilePath(outFolder)
+        self.transformedData = []
 
-        self.folder = &#34;&#34;
-        self.outputFolder = &#34;&#34;
+    def init(self):
 
-        self.current = -1
-        self.end = 0
-        self.finished = False
-
-        self.logFiles = []
-
-        self.params = {
-            &#34;Name&#34;: None,
-            &#34;Period&#34;: 5,
-            &#34;NbSnapshots&#34;: None,
-            &#34;Collectors&#34;: [],
-            &#34;IpVersion&#34;: [4,6]
-        }
-
-    def setParams(self, params):
-        for k,v in params.items():
-            self.params[k] = v
-
-    def setFolder(self, folder):
-        self.folder = folder
-
-    def setOutputFolder(self, outputFolder):
-        self.outputFolder = outputFolder
- 
-    def setLogFiles(self, logFiles):
-        self.logFiles = logFiles
-
-    def getProgress(self):
-        progress = 0
-        if(self.current!=-1):
-            progress = (self.current - self.startTime)*100//(self.endTime - self.startTime)
-        return(progress)
-
-    def isRunning(self):
-        return(not self.finished)
-
-    def stop(self):
-        self.terminate()
-
-    def prepare(self):
-
-        utils.printAndLog(&#34;Prepare&#34;, self.logFiles)
-
-        priming_data_filepath = self.folder + os.sep + &#34;priming_data&#34; + os.sep + &#34;routes.json&#34;
-        updates_filepath = self.folder + os.sep + &#34;data&#34; + os.sep + &#34;updates.csv&#34;
-
-        if(self.loadPrimingData):
+        self.log(&#34;Init&#34;)
+        
+        if(self.primingFile[-3:]==&#34;.gz&#34;):
             utils.printAndLog(&#34;Ungzip priming data&#34;, self.logFiles)
-            utils.ungzipFile(priming_data_filepath + &#34;.gz&#34;)
-
-        utils.printAndLog(&#34;Ungzip updates&#34;, self.logFiles)
-        utils.ungzipFile(updates_filepath + &#34;.gz&#34;)
-
-        self.priming_data_filepath = priming_data_filepath
-        self.updates_filepath = updates_filepath
-
-        utils.printAndLog(&#34;Load priming data&#34;, self.logFiles)
-
+            utils.ungzipFile(self.primingFile)
+            self.primingFile = self.primingFile[:-3]
+        
+        if(self.dataFile[-3:]==&#34;.gz&#34;):
+            utils.printAndLog(&#34;Ungzip updates&#34;, self.logFiles)
+            utils.ungzipFile(self.dataFile)
+            self.dataFile = self.dataFile[:-3]
+        
+        self.log(&#34;Load priming data&#34;)
         self.prior_routes = {}
         if(self.loadPrimingData):
-            self.prior_routes = json.load(open(priming_data_filepath))
+            self.prior_routes = json.load(open(self.primingFile))
             for prefix in list(self.prior_routes.keys()):
 
-                network = ip.ip_network(prefix)
-
-                if(network.version in self.params[&#34;IpVersion&#34;]):
+                if(utils.ipVersion(prefix) in self.params[&#34;IpVersion&#34;]):
         
                     if(len(self.params[&#34;Collectors&#34;])&gt;0):
 
                         for collector in list(self.prior_routes[prefix].keys()):
                             if(not collector in self.params[&#34;Collectors&#34;]):
-                                self.prior_routes[prefix].pop(collector)
+                                del self.prior_routes[prefix][collector]
                 else:
-                    self.prior_routes.pop(prefix)
-
-    def init(self):
-
-        utils.printAndLog(&#34;Init&#34;, self.logFiles)
-
-        # Update Data
-        updates_file = open(self.updates_filepath)
-        c = 0
-
-        for line in updates_file:
-            update = line[:-1].split(&#39;,&#39;)
-
-            if(c==0):
-                updatesHeader = update
-                updatesHeaderIndex = utils.getIndexList(updatesHeader)
-            else:
-
-                if(c==1):
-                    firstUpdate = update
-                else:
-                    lastUpdate = update
-
-            c += 1
-
-        self.startTime = int(firstUpdate[updatesHeader.index(&#34;time&#34;)])
-        self.endTime = int(lastUpdate[updatesHeader.index(&#34;time&#34;)])
+                    del self.prior_routes[prefix]
+        
+        self.log(&#34;Get updates infos&#34;)
+        self.header, self.startTime, self.endTime = getUpdatesInfos(self.dataFile)
         
         if(self.params[&#34;NbSnapshots&#34;]==None):
             self.T = ceil((self.endTime-self.startTime)/60 /self.params[&#34;Period&#34;]) + 1 # +1 because the first snapshot is at t=0
         else:
             self.T = self.params[&#34;NbSnapshots&#34;]
-            
-        self.end = c-1
-
+        
+        self.startProgress = self.startTime
+        self.endProgress= self.endTime
 
     def computeSnapshot(self, t, routes, updatesParsed):
         self.transformedData.append(self.transforms(t, routes, updatesParsed))
 
     def compute(self):
 
-        utils.printAndLog(&#34;compute&#34;, self.logFiles)
+        self.log(&#34;Compute&#34;)
 
         self.preProcess()
 
-        self.transformedData = []
-
-        updates_file = open(self.updates_filepath)
+        lines = open(self.dataFile)
 
         routes = self.prior_routes
-        updates = []
         updatesParsed = []
 
-        c = 0
         t = 0
-
-        for line in updates_file:
+        i=0
+        for line in lines:
 
             if(t == self.T):
                 break
+                
+            if(i!=0):
+                
+                update = parseUpdate(line[:-1].split(&#39;,&#39;), self.header)
 
-            lineSplited = line[:-1].split(&#39;,&#39;)
-
-            if(c==0):
-                header = utils.getIndexList(lineSplited)
-                headerLine = line
-                updates = [headerLine]
-        
-            else:
-
-                update = self.parseUpdate(lineSplited, header)
-
-                if(self.startTime + t*self.params[&#34;Period&#34;] *60 &lt;= int(update[&#34;time&#34;]) and t &lt; self.T):
-                    
-                    if(t&gt;0 and self.computeRoutes):
-                        routes = dumpRoutes(0, 0, self.outputFolder, [], routes=routes, logFiles=[&#34;LOG_ONLY&#34;], saveRoutes=False, updates=updates, returnRoutes=True)   
+                if(self.startTime + t*self.params[&#34;Period&#34;]*60 &lt;= int(update[&#34;time&#34;]) and t &lt; self.T):
                     
                     self.computeSnapshot(t, routes, updatesParsed)
-
-                    updates = [headerLine]
                     updatesParsed = []
-
                     t += 1
 
+                prefix = update[&#34;fields&#34;][&#34;prefix&#34;]
 
-                network = ip.ip_network(update[&#34;fields&#34;][&#34;prefix&#34;])
-
-                if(network.version in self.params[&#34;IpVersion&#34;]):
+                if(utils.ipVersion(prefix) in self.params[&#34;IpVersion&#34;]):
                     if(len(self.params[&#34;Collectors&#34;])&gt;0):
-
                         if(update[&#34;collector&#34;] in self.params[&#34;Collectors&#34;]):
-                            updates.append(line)
-                            updatesParsed.append(update)
+                            if(self.computeRoutes):
+                                routes = updateRoutes(routes, update)
+                            if(self.computeUpdates):
+                                updatesParsed.append(update)
 
                     else:
-                        updates.append(line)
-                        updatesParsed.append(update)
+                        if(self.computeRoutes):
+                            routes = updateRoutes(routes, update)
+                        if(self.computeUpdates):
+                            updatesParsed.append(update)
 
-                self.current = int(update[&#34;time&#34;])
-
-            c += 1
-
-
-    def parseUpdate(self, lineSplited, header):
-
-        u= {}
-
-        u[&#39;collector&#39;] = lineSplited[header[&#39;collector&#39;]]
-        u[&#39;dump_time&#39;] = lineSplited[header[&#39;dump_time&#39;]]
-        u[&#39;type&#39;] = lineSplited[header[&#39;type&#39;]]
-        u[&#39;time&#39;] = lineSplited[header[&#39;time&#39;]]
-        u[&#39;peer_address&#39;] = lineSplited[header[&#39;peer_address&#39;]]
-        u[&#39;peer_asn&#39;] = lineSplited[header[&#39;peer_asn&#39;]]
-        u[&#39;fields&#39;] = json.loads(&#34;,&#34;.join(lineSplited[header[&#39;fields&#39;]::]))
-
-        return(u)
-
-
-    def getOutputFilename(self):
-        if(self.params[&#34;Name&#34;] is None):
-            return(self.__class__.__name__ + &#34;_&#34; + str(self.params[&#34;Period&#34;]))
+                self.printProgress(int(update[&#34;time&#34;]))
+            i+=1
+                
+    def getFileName(self):
+            if(self.params[&#34;Name&#34;] is None):
+                return((self.__class__.__name__ + &#34;_&#34; + str(self.params[&#34;Period&#34;])))
+            else:
+                return(self.params[&#34;Name&#34;])
+    
+    def getFilePath(self, path):
+        if(path is None):
+            return(None)
         else:
-            return(self.params[&#34;Name&#34;])
+            return(utils.mkdirPath(path) + self.getFileName() + self.fileExtension)
 
-    def save(self, gzip=True):
-
-        self.saveData(utils.mkdirPath(self.outputFolder), self.getOutputFilename(), self.transformedData, gzip)
-
-        utils.printAndLog(&#34;saved&#34;, self.logFiles)
+    def save(self):
+        with open(self.filePath, &#39;w&#39;) as outfile:
+            json.dump(self.transformedData, outfile)
+        self.log(&#34;saved&#34;)
 
     def exists(self):
-        filepath = self.outputFolder + os.sep + self.getOutputFilename() + &#34;.json&#34;
-        return(os.path.exists(filepath) or os.path.exists(filepath+&#34;.gz&#34;))
-
-    def saveData(self, folder, fileName, data, gzip):
-
-        filePath = folder + fileName + &#34;.json&#34;
-
-        with open(filePath, &#39;w&#39;) as outfile:
-            json.dump(data, outfile)
-
-        if(gzip):
-            utils.gzipFile(filePath)
-            filePath += &#34;.gz&#34;
+        return(os.path.exists(self.filePath) or os.path.exists(self.filePath+&#34;.gz&#34;))
 
     def transforms(self, index, routes, updates):
         return(None)
@@ -282,32 +183,48 @@ class BaseTransform(Thread):
     def postProcess(self, transformedData):
         return(transformedData)
 
-    def run(self):
-
-        self.prepare()
-
-        self.init()
-
-        self.compute()
-
-        self.transformedData = self.postProcess(self.transformedData)
-
-        if(os.path.exists(self.updates_filepath+&#34;.gz&#34;)):
-            os.remove(self.updates_filepath)
-        if(os.path.exists(self.priming_data_filepath+&#34;.gz&#34;)):
-            if(self.loadPrimingData):
-                os.remove(self.priming_data_filepath)
+    def execute(self):
         
-        self.finished = True
+        timeAtStart = time.time()
+        
+        self.log(&#34;###############&#34;)
+        self.log(&#34;# Transform&#34;)
+        self.log(&#34;###############&#34;)
+        
+        self.log(&#34;Folder: {}&#34;.format(self.outFolder))
+        self.printParams()
+        
+        if(self.exists() and self.params[&#34;SkipIfExist&#34;]):
+            self.log(&#34;Data exists, skipped&#34;)
+        else:
+            self.init()
 
+            self.compute()
+
+            self.transformedData = self.postProcess(self.transformedData)
+
+            self.log(&#34;Computation time: &#34; + utils.timeFormat(time.time()-timeAtStart))
+            if(self.filePath!=None):
+                self.save()
+                if(self.params[&#34;Gzip&#34;]):
+                    utils.gzipFile(self.filePath, remove=True)
+                    self.filePath += &#34;.gz&#34;
+                self.log(&#34;Transformed data saved to: &#34; + self.filePath)
+                
+            if(os.path.exists(self.dataFile+&#34;.gz&#34;)):
+                os.remove(self.dataFile)
+            if(os.path.exists(self.primingFile+&#34;.gz&#34;)):
+                if(self.loadPrimingData):
+                    os.remove(self.primingFile)
 
 class BaseTransformParallelized(BaseTransform):
 
-    def __init__(self):
-
-        BaseTransform.__init__(self)
+    def __init__(self, primingFile, dataFile, params, outFolder, logFiles):
+        
         self.params[&#34;nbProcess&#34;] = multiprocessing.cpu_count()
-
+        
+        BaseTransform.__init__(self, primingFile, dataFile, params, outFolder, logFiles)
+        
     def preProcess(self):
         manager = multiprocessing.Manager()
         self.data = manager.dict()
@@ -328,14 +245,33 @@ class BaseTransformParallelized(BaseTransform):
         for i in range(len(self.data)):
             if(i in self.data):
                 self.transformedData.append(self.data[i])
-                #self.transformedData.append(self.data[i].copy())
                 del self.data[i]
 
     def runTransforms(self, data, index, routes, updates):
         data[index] = self.transforms(index, routes, updates)
         del routes
         del updates
-        return(None)</code></pre>
+        return(None)
+    
+def transform(transformation, primingFile, dataFile, params=None, outFolder=None, logFiles=None):
+        
+    if(logFiles is None):
+        logFiles = []
+                       
+    if(params is None):
+        params = {}
+    
+    if(outFolder!=None):
+        logFile = open(utils.mkdirPath(outFolder)+&#34;transform.log&#34;,&#39;w&#39;)
+        logFiles.append(logFile)
+    
+    transform = transformation(primingFile, dataFile, params, outFolder, logFiles)
+    transform.execute()
+
+    if(outFolder!=None):
+        logFile.close()
+
+    return(transform.transformedData, transform.filePath)</code></pre>
 </details>
 </section>
 <section>
@@ -343,264 +279,191 @@ class BaseTransformParallelized(BaseTransform):
 <section>
 </section>
 <section>
+<h2 class="section-title" id="header-functions">Functions</h2>
+<dl>
+<dt id="BML.transform.base_transform.transform"><code class="name flex">
+<span>def <span class="ident">transform</span></span>(<span>transformation, primingFile, dataFile, params=None, outFolder=None, logFiles=None)</span>
+</code></dt>
+<dd>
+<div class="desc"></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def transform(transformation, primingFile, dataFile, params=None, outFolder=None, logFiles=None):
+        
+    if(logFiles is None):
+        logFiles = []
+                       
+    if(params is None):
+        params = {}
+    
+    if(outFolder!=None):
+        logFile = open(utils.mkdirPath(outFolder)+&#34;transform.log&#34;,&#39;w&#39;)
+        logFiles.append(logFile)
+    
+    transform = transformation(primingFile, dataFile, params, outFolder, logFiles)
+    transform.execute()
+
+    if(outFolder!=None):
+        logFile.close()
+
+    return(transform.transformedData, transform.filePath)</code></pre>
+</details>
+</dd>
+</dl>
 </section>
 <section>
 <h2 class="section-title" id="header-classes">Classes</h2>
 <dl>
 <dt id="BML.transform.base_transform.BaseTransform"><code class="flex name class">
 <span>class <span class="ident">BaseTransform</span></span>
+<span>(</span><span>primingFile, dataFile, params, outFolder, logFiles)</span>
 </code></dt>
 <dd>
-<div class="desc"><p>A class that represents a thread of control.</p>
-<p>This class can be safely subclassed in a limited fashion. There are two ways
-to specify the activity: by passing a callable object to the constructor, or
-by overriding the run() method in a subclass.</p>
-<p>This constructor should always be called with keyword arguments. Arguments are:</p>
-<p><em>group</em> should be None; reserved for future extension when a ThreadGroup
-class is implemented.</p>
-<p><em>target</em> is the callable object to be invoked by the run()
-method. Defaults to None, meaning nothing is called.</p>
-<p><em>name</em> is the thread name. By default, a unique name is constructed of
-the form "Thread-N" where N is a small decimal number.</p>
-<p><em>args</em> is the argument tuple for the target invocation. Defaults to ().</p>
-<p><em>kwargs</em> is a dictionary of keyword arguments for the target
-invocation. Defaults to {}.</p>
-<p>If a subclass overrides the constructor, it must make sure to invoke
-the base class constructor (Thread.<strong>init</strong>()) before doing anything
-else to the thread.</p></div>
+<div class="desc"></div>
 <details class="source">
 <summary>
 <span>Expand source code</span>
 </summary>
-<pre><code class="python">class BaseTransform(Thread):
+<pre><code class="python">class BaseTransform(utils.BmlProcess):
 
     computeRoutes = True
+    computeUpdates = True
     loadPrimingData = True
+    fileExtension = &#34;.json&#34;
+    params = {}
 
-    def __init__(self):
+    def __init__(self, primingFile, dataFile, params, outFolder, logFiles):
 
-        Thread.__init__(self)
+        utils.BmlProcess.__init__(self, logFiles)
+        
+        self.params[&#34;Name&#34;] = None
+        self.params[&#34;Period&#34;] = 5
+        self.params[&#34;NbSnapshots&#34;] = None
+        self.params[&#34;Collectors&#34;] = []
+        self.params[&#34;IpVersion&#34;] = [4,6]
+        self.params[&#34;SkipIfExist&#34;] = True
+        self.params[&#34;Gzip&#34;] = False
+        
+        self.setParams(params)
+        
+        self.primingFile = primingFile
+        self.dataFile = dataFile
+        self.outFolder = outFolder
+        self.filePath = self.getFilePath(outFolder)
+        self.transformedData = []
 
-        self.folder = &#34;&#34;
-        self.outputFolder = &#34;&#34;
+    def init(self):
 
-        self.current = -1
-        self.end = 0
-        self.finished = False
-
-        self.logFiles = []
-
-        self.params = {
-            &#34;Name&#34;: None,
-            &#34;Period&#34;: 5,
-            &#34;NbSnapshots&#34;: None,
-            &#34;Collectors&#34;: [],
-            &#34;IpVersion&#34;: [4,6]
-        }
-
-    def setParams(self, params):
-        for k,v in params.items():
-            self.params[k] = v
-
-    def setFolder(self, folder):
-        self.folder = folder
-
-    def setOutputFolder(self, outputFolder):
-        self.outputFolder = outputFolder
- 
-    def setLogFiles(self, logFiles):
-        self.logFiles = logFiles
-
-    def getProgress(self):
-        progress = 0
-        if(self.current!=-1):
-            progress = (self.current - self.startTime)*100//(self.endTime - self.startTime)
-        return(progress)
-
-    def isRunning(self):
-        return(not self.finished)
-
-    def stop(self):
-        self.terminate()
-
-    def prepare(self):
-
-        utils.printAndLog(&#34;Prepare&#34;, self.logFiles)
-
-        priming_data_filepath = self.folder + os.sep + &#34;priming_data&#34; + os.sep + &#34;routes.json&#34;
-        updates_filepath = self.folder + os.sep + &#34;data&#34; + os.sep + &#34;updates.csv&#34;
-
-        if(self.loadPrimingData):
+        self.log(&#34;Init&#34;)
+        
+        if(self.primingFile[-3:]==&#34;.gz&#34;):
             utils.printAndLog(&#34;Ungzip priming data&#34;, self.logFiles)
-            utils.ungzipFile(priming_data_filepath + &#34;.gz&#34;)
-
-        utils.printAndLog(&#34;Ungzip updates&#34;, self.logFiles)
-        utils.ungzipFile(updates_filepath + &#34;.gz&#34;)
-
-        self.priming_data_filepath = priming_data_filepath
-        self.updates_filepath = updates_filepath
-
-        utils.printAndLog(&#34;Load priming data&#34;, self.logFiles)
-
+            utils.ungzipFile(self.primingFile)
+            self.primingFile = self.primingFile[:-3]
+        
+        if(self.dataFile[-3:]==&#34;.gz&#34;):
+            utils.printAndLog(&#34;Ungzip updates&#34;, self.logFiles)
+            utils.ungzipFile(self.dataFile)
+            self.dataFile = self.dataFile[:-3]
+        
+        self.log(&#34;Load priming data&#34;)
         self.prior_routes = {}
         if(self.loadPrimingData):
-            self.prior_routes = json.load(open(priming_data_filepath))
+            self.prior_routes = json.load(open(self.primingFile))
             for prefix in list(self.prior_routes.keys()):
 
-                network = ip.ip_network(prefix)
-
-                if(network.version in self.params[&#34;IpVersion&#34;]):
+                if(utils.ipVersion(prefix) in self.params[&#34;IpVersion&#34;]):
         
                     if(len(self.params[&#34;Collectors&#34;])&gt;0):
 
                         for collector in list(self.prior_routes[prefix].keys()):
                             if(not collector in self.params[&#34;Collectors&#34;]):
-                                self.prior_routes[prefix].pop(collector)
+                                del self.prior_routes[prefix][collector]
                 else:
-                    self.prior_routes.pop(prefix)
-
-    def init(self):
-
-        utils.printAndLog(&#34;Init&#34;, self.logFiles)
-
-        # Update Data
-        updates_file = open(self.updates_filepath)
-        c = 0
-
-        for line in updates_file:
-            update = line[:-1].split(&#39;,&#39;)
-
-            if(c==0):
-                updatesHeader = update
-                updatesHeaderIndex = utils.getIndexList(updatesHeader)
-            else:
-
-                if(c==1):
-                    firstUpdate = update
-                else:
-                    lastUpdate = update
-
-            c += 1
-
-        self.startTime = int(firstUpdate[updatesHeader.index(&#34;time&#34;)])
-        self.endTime = int(lastUpdate[updatesHeader.index(&#34;time&#34;)])
+                    del self.prior_routes[prefix]
+        
+        self.log(&#34;Get updates infos&#34;)
+        self.header, self.startTime, self.endTime = getUpdatesInfos(self.dataFile)
         
         if(self.params[&#34;NbSnapshots&#34;]==None):
             self.T = ceil((self.endTime-self.startTime)/60 /self.params[&#34;Period&#34;]) + 1 # +1 because the first snapshot is at t=0
         else:
             self.T = self.params[&#34;NbSnapshots&#34;]
-            
-        self.end = c-1
-
+        
+        self.startProgress = self.startTime
+        self.endProgress= self.endTime
 
     def computeSnapshot(self, t, routes, updatesParsed):
         self.transformedData.append(self.transforms(t, routes, updatesParsed))
 
     def compute(self):
 
-        utils.printAndLog(&#34;compute&#34;, self.logFiles)
+        self.log(&#34;Compute&#34;)
 
         self.preProcess()
 
-        self.transformedData = []
-
-        updates_file = open(self.updates_filepath)
+        lines = open(self.dataFile)
 
         routes = self.prior_routes
-        updates = []
         updatesParsed = []
 
-        c = 0
         t = 0
-
-        for line in updates_file:
+        i=0
+        for line in lines:
 
             if(t == self.T):
                 break
+                
+            if(i!=0):
+                
+                update = parseUpdate(line[:-1].split(&#39;,&#39;), self.header)
 
-            lineSplited = line[:-1].split(&#39;,&#39;)
-
-            if(c==0):
-                header = utils.getIndexList(lineSplited)
-                headerLine = line
-                updates = [headerLine]
-        
-            else:
-
-                update = self.parseUpdate(lineSplited, header)
-
-                if(self.startTime + t*self.params[&#34;Period&#34;] *60 &lt;= int(update[&#34;time&#34;]) and t &lt; self.T):
-                    
-                    if(t&gt;0 and self.computeRoutes):
-                        routes = dumpRoutes(0, 0, self.outputFolder, [], routes=routes, logFiles=[&#34;LOG_ONLY&#34;], saveRoutes=False, updates=updates, returnRoutes=True)   
+                if(self.startTime + t*self.params[&#34;Period&#34;]*60 &lt;= int(update[&#34;time&#34;]) and t &lt; self.T):
                     
                     self.computeSnapshot(t, routes, updatesParsed)
-
-                    updates = [headerLine]
                     updatesParsed = []
-
                     t += 1
 
+                prefix = update[&#34;fields&#34;][&#34;prefix&#34;]
 
-                network = ip.ip_network(update[&#34;fields&#34;][&#34;prefix&#34;])
-
-                if(network.version in self.params[&#34;IpVersion&#34;]):
+                if(utils.ipVersion(prefix) in self.params[&#34;IpVersion&#34;]):
                     if(len(self.params[&#34;Collectors&#34;])&gt;0):
-
                         if(update[&#34;collector&#34;] in self.params[&#34;Collectors&#34;]):
-                            updates.append(line)
-                            updatesParsed.append(update)
+                            if(self.computeRoutes):
+                                routes = updateRoutes(routes, update)
+                            if(self.computeUpdates):
+                                updatesParsed.append(update)
 
                     else:
-                        updates.append(line)
-                        updatesParsed.append(update)
+                        if(self.computeRoutes):
+                            routes = updateRoutes(routes, update)
+                        if(self.computeUpdates):
+                            updatesParsed.append(update)
 
-                self.current = int(update[&#34;time&#34;])
-
-            c += 1
-
-
-    def parseUpdate(self, lineSplited, header):
-
-        u= {}
-
-        u[&#39;collector&#39;] = lineSplited[header[&#39;collector&#39;]]
-        u[&#39;dump_time&#39;] = lineSplited[header[&#39;dump_time&#39;]]
-        u[&#39;type&#39;] = lineSplited[header[&#39;type&#39;]]
-        u[&#39;time&#39;] = lineSplited[header[&#39;time&#39;]]
-        u[&#39;peer_address&#39;] = lineSplited[header[&#39;peer_address&#39;]]
-        u[&#39;peer_asn&#39;] = lineSplited[header[&#39;peer_asn&#39;]]
-        u[&#39;fields&#39;] = json.loads(&#34;,&#34;.join(lineSplited[header[&#39;fields&#39;]::]))
-
-        return(u)
-
-
-    def getOutputFilename(self):
-        if(self.params[&#34;Name&#34;] is None):
-            return(self.__class__.__name__ + &#34;_&#34; + str(self.params[&#34;Period&#34;]))
+                self.printProgress(int(update[&#34;time&#34;]))
+            i+=1
+                
+    def getFileName(self):
+            if(self.params[&#34;Name&#34;] is None):
+                return((self.__class__.__name__ + &#34;_&#34; + str(self.params[&#34;Period&#34;])))
+            else:
+                return(self.params[&#34;Name&#34;])
+    
+    def getFilePath(self, path):
+        if(path is None):
+            return(None)
         else:
-            return(self.params[&#34;Name&#34;])
+            return(utils.mkdirPath(path) + self.getFileName() + self.fileExtension)
 
-    def save(self, gzip=True):
-
-        self.saveData(utils.mkdirPath(self.outputFolder), self.getOutputFilename(), self.transformedData, gzip)
-
-        utils.printAndLog(&#34;saved&#34;, self.logFiles)
+    def save(self):
+        with open(self.filePath, &#39;w&#39;) as outfile:
+            json.dump(self.transformedData, outfile)
+        self.log(&#34;saved&#34;)
 
     def exists(self):
-        filepath = self.outputFolder + os.sep + self.getOutputFilename() + &#34;.json&#34;
-        return(os.path.exists(filepath) or os.path.exists(filepath+&#34;.gz&#34;))
-
-    def saveData(self, folder, fileName, data, gzip):
-
-        filePath = folder + fileName + &#34;.json&#34;
-
-        with open(filePath, &#39;w&#39;) as outfile:
-            json.dump(data, outfile)
-
-        if(gzip):
-            utils.gzipFile(filePath)
-            filePath += &#34;.gz&#34;
+        return(os.path.exists(self.filePath) or os.path.exists(self.filePath+&#34;.gz&#34;))
 
     def transforms(self, index, routes, updates):
         return(None)
@@ -611,27 +474,43 @@ else to the thread.</p></div>
     def postProcess(self, transformedData):
         return(transformedData)
 
-    def run(self):
-
-        self.prepare()
-
-        self.init()
-
-        self.compute()
-
-        self.transformedData = self.postProcess(self.transformedData)
-
-        if(os.path.exists(self.updates_filepath+&#34;.gz&#34;)):
-            os.remove(self.updates_filepath)
-        if(os.path.exists(self.priming_data_filepath+&#34;.gz&#34;)):
-            if(self.loadPrimingData):
-                os.remove(self.priming_data_filepath)
+    def execute(self):
         
-        self.finished = True</code></pre>
+        timeAtStart = time.time()
+        
+        self.log(&#34;###############&#34;)
+        self.log(&#34;# Transform&#34;)
+        self.log(&#34;###############&#34;)
+        
+        self.log(&#34;Folder: {}&#34;.format(self.outFolder))
+        self.printParams()
+        
+        if(self.exists() and self.params[&#34;SkipIfExist&#34;]):
+            self.log(&#34;Data exists, skipped&#34;)
+        else:
+            self.init()
+
+            self.compute()
+
+            self.transformedData = self.postProcess(self.transformedData)
+
+            self.log(&#34;Computation time: &#34; + utils.timeFormat(time.time()-timeAtStart))
+            if(self.filePath!=None):
+                self.save()
+                if(self.params[&#34;Gzip&#34;]):
+                    utils.gzipFile(self.filePath, remove=True)
+                    self.filePath += &#34;.gz&#34;
+                self.log(&#34;Transformed data saved to: &#34; + self.filePath)
+                
+            if(os.path.exists(self.dataFile+&#34;.gz&#34;)):
+                os.remove(self.dataFile)
+            if(os.path.exists(self.primingFile+&#34;.gz&#34;)):
+                if(self.loadPrimingData):
+                    os.remove(self.primingFile)</code></pre>
 </details>
 <h3>Ancestors</h3>
 <ul class="hlist">
-<li>threading.Thread</li>
+<li><a title="BML.utils.bml_process.BmlProcess" href="../utils/bml_process.html#BML.utils.bml_process.BmlProcess">BmlProcess</a></li>
 </ul>
 <h3>Subclasses</h3>
 <ul class="hlist">
@@ -645,7 +524,19 @@ else to the thread.</p></div>
 <dd>
 <div class="desc"></div>
 </dd>
+<dt id="BML.transform.base_transform.BaseTransform.computeUpdates"><code class="name">var <span class="ident">computeUpdates</span></code></dt>
+<dd>
+<div class="desc"></div>
+</dd>
+<dt id="BML.transform.base_transform.BaseTransform.fileExtension"><code class="name">var <span class="ident">fileExtension</span></code></dt>
+<dd>
+<div class="desc"></div>
+</dd>
 <dt id="BML.transform.base_transform.BaseTransform.loadPrimingData"><code class="name">var <span class="ident">loadPrimingData</span></code></dt>
+<dd>
+<div class="desc"></div>
+</dd>
+<dt id="BML.transform.base_transform.BaseTransform.params"><code class="name">var <span class="ident">params</span></code></dt>
 <dd>
 <div class="desc"></div>
 </dd>
@@ -663,66 +554,50 @@ else to the thread.</p></div>
 </summary>
 <pre><code class="python">def compute(self):
 
-    utils.printAndLog(&#34;compute&#34;, self.logFiles)
+    self.log(&#34;Compute&#34;)
 
     self.preProcess()
 
-    self.transformedData = []
-
-    updates_file = open(self.updates_filepath)
+    lines = open(self.dataFile)
 
     routes = self.prior_routes
-    updates = []
     updatesParsed = []
 
-    c = 0
     t = 0
-
-    for line in updates_file:
+    i=0
+    for line in lines:
 
         if(t == self.T):
             break
+            
+        if(i!=0):
+            
+            update = parseUpdate(line[:-1].split(&#39;,&#39;), self.header)
 
-        lineSplited = line[:-1].split(&#39;,&#39;)
-
-        if(c==0):
-            header = utils.getIndexList(lineSplited)
-            headerLine = line
-            updates = [headerLine]
-    
-        else:
-
-            update = self.parseUpdate(lineSplited, header)
-
-            if(self.startTime + t*self.params[&#34;Period&#34;] *60 &lt;= int(update[&#34;time&#34;]) and t &lt; self.T):
-                
-                if(t&gt;0 and self.computeRoutes):
-                    routes = dumpRoutes(0, 0, self.outputFolder, [], routes=routes, logFiles=[&#34;LOG_ONLY&#34;], saveRoutes=False, updates=updates, returnRoutes=True)   
+            if(self.startTime + t*self.params[&#34;Period&#34;]*60 &lt;= int(update[&#34;time&#34;]) and t &lt; self.T):
                 
                 self.computeSnapshot(t, routes, updatesParsed)
-
-                updates = [headerLine]
                 updatesParsed = []
-
                 t += 1
 
+            prefix = update[&#34;fields&#34;][&#34;prefix&#34;]
 
-            network = ip.ip_network(update[&#34;fields&#34;][&#34;prefix&#34;])
-
-            if(network.version in self.params[&#34;IpVersion&#34;]):
+            if(utils.ipVersion(prefix) in self.params[&#34;IpVersion&#34;]):
                 if(len(self.params[&#34;Collectors&#34;])&gt;0):
-
                     if(update[&#34;collector&#34;] in self.params[&#34;Collectors&#34;]):
-                        updates.append(line)
-                        updatesParsed.append(update)
+                        if(self.computeRoutes):
+                            routes = updateRoutes(routes, update)
+                        if(self.computeUpdates):
+                            updatesParsed.append(update)
 
                 else:
-                    updates.append(line)
-                    updatesParsed.append(update)
+                    if(self.computeRoutes):
+                        routes = updateRoutes(routes, update)
+                    if(self.computeUpdates):
+                        updatesParsed.append(update)
 
-            self.current = int(update[&#34;time&#34;])
-
-        c += 1</code></pre>
+            self.printProgress(int(update[&#34;time&#34;]))
+        i+=1</code></pre>
 </details>
 </dd>
 <dt id="BML.transform.base_transform.BaseTransform.computeSnapshot"><code class="name flex">
@@ -738,6 +613,50 @@ else to the thread.</p></div>
     self.transformedData.append(self.transforms(t, routes, updatesParsed))</code></pre>
 </details>
 </dd>
+<dt id="BML.transform.base_transform.BaseTransform.execute"><code class="name flex">
+<span>def <span class="ident">execute</span></span>(<span>self)</span>
+</code></dt>
+<dd>
+<div class="desc"></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def execute(self):
+    
+    timeAtStart = time.time()
+    
+    self.log(&#34;###############&#34;)
+    self.log(&#34;# Transform&#34;)
+    self.log(&#34;###############&#34;)
+    
+    self.log(&#34;Folder: {}&#34;.format(self.outFolder))
+    self.printParams()
+    
+    if(self.exists() and self.params[&#34;SkipIfExist&#34;]):
+        self.log(&#34;Data exists, skipped&#34;)
+    else:
+        self.init()
+
+        self.compute()
+
+        self.transformedData = self.postProcess(self.transformedData)
+
+        self.log(&#34;Computation time: &#34; + utils.timeFormat(time.time()-timeAtStart))
+        if(self.filePath!=None):
+            self.save()
+            if(self.params[&#34;Gzip&#34;]):
+                utils.gzipFile(self.filePath, remove=True)
+                self.filePath += &#34;.gz&#34;
+            self.log(&#34;Transformed data saved to: &#34; + self.filePath)
+            
+        if(os.path.exists(self.dataFile+&#34;.gz&#34;)):
+            os.remove(self.dataFile)
+        if(os.path.exists(self.primingFile+&#34;.gz&#34;)):
+            if(self.loadPrimingData):
+                os.remove(self.primingFile)</code></pre>
+</details>
+</dd>
 <dt id="BML.transform.base_transform.BaseTransform.exists"><code class="name flex">
 <span>def <span class="ident">exists</span></span>(<span>self)</span>
 </code></dt>
@@ -748,12 +667,11 @@ else to the thread.</p></div>
 <span>Expand source code</span>
 </summary>
 <pre><code class="python">def exists(self):
-    filepath = self.outputFolder + os.sep + self.getOutputFilename() + &#34;.json&#34;
-    return(os.path.exists(filepath) or os.path.exists(filepath+&#34;.gz&#34;))</code></pre>
+    return(os.path.exists(self.filePath) or os.path.exists(self.filePath+&#34;.gz&#34;))</code></pre>
 </details>
 </dd>
-<dt id="BML.transform.base_transform.BaseTransform.getOutputFilename"><code class="name flex">
-<span>def <span class="ident">getOutputFilename</span></span>(<span>self)</span>
+<dt id="BML.transform.base_transform.BaseTransform.getFileName"><code class="name flex">
+<span>def <span class="ident">getFileName</span></span>(<span>self)</span>
 </code></dt>
 <dd>
 <div class="desc"></div>
@@ -761,27 +679,27 @@ else to the thread.</p></div>
 <summary>
 <span>Expand source code</span>
 </summary>
-<pre><code class="python">def getOutputFilename(self):
-    if(self.params[&#34;Name&#34;] is None):
-        return(self.__class__.__name__ + &#34;_&#34; + str(self.params[&#34;Period&#34;]))
+<pre><code class="python">def getFileName(self):
+        if(self.params[&#34;Name&#34;] is None):
+            return((self.__class__.__name__ + &#34;_&#34; + str(self.params[&#34;Period&#34;])))
+        else:
+            return(self.params[&#34;Name&#34;])</code></pre>
+</details>
+</dd>
+<dt id="BML.transform.base_transform.BaseTransform.getFilePath"><code class="name flex">
+<span>def <span class="ident">getFilePath</span></span>(<span>self, path)</span>
+</code></dt>
+<dd>
+<div class="desc"></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def getFilePath(self, path):
+    if(path is None):
+        return(None)
     else:
-        return(self.params[&#34;Name&#34;])</code></pre>
-</details>
-</dd>
-<dt id="BML.transform.base_transform.BaseTransform.getProgress"><code class="name flex">
-<span>def <span class="ident">getProgress</span></span>(<span>self)</span>
-</code></dt>
-<dd>
-<div class="desc"></div>
-<details class="source">
-<summary>
-<span>Expand source code</span>
-</summary>
-<pre><code class="python">def getProgress(self):
-    progress = 0
-    if(self.current!=-1):
-        progress = (self.current - self.startTime)*100//(self.endTime - self.startTime)
-    return(progress)</code></pre>
+        return(utils.mkdirPath(path) + self.getFileName() + self.fileExtension)</code></pre>
 </details>
 </dd>
 <dt id="BML.transform.base_transform.BaseTransform.init"><code class="name flex">
@@ -795,73 +713,44 @@ else to the thread.</p></div>
 </summary>
 <pre><code class="python">def init(self):
 
-    utils.printAndLog(&#34;Init&#34;, self.logFiles)
+    self.log(&#34;Init&#34;)
+    
+    if(self.primingFile[-3:]==&#34;.gz&#34;):
+        utils.printAndLog(&#34;Ungzip priming data&#34;, self.logFiles)
+        utils.ungzipFile(self.primingFile)
+        self.primingFile = self.primingFile[:-3]
+    
+    if(self.dataFile[-3:]==&#34;.gz&#34;):
+        utils.printAndLog(&#34;Ungzip updates&#34;, self.logFiles)
+        utils.ungzipFile(self.dataFile)
+        self.dataFile = self.dataFile[:-3]
+    
+    self.log(&#34;Load priming data&#34;)
+    self.prior_routes = {}
+    if(self.loadPrimingData):
+        self.prior_routes = json.load(open(self.primingFile))
+        for prefix in list(self.prior_routes.keys()):
 
-    # Update Data
-    updates_file = open(self.updates_filepath)
-    c = 0
+            if(utils.ipVersion(prefix) in self.params[&#34;IpVersion&#34;]):
+    
+                if(len(self.params[&#34;Collectors&#34;])&gt;0):
 
-    for line in updates_file:
-        update = line[:-1].split(&#39;,&#39;)
-
-        if(c==0):
-            updatesHeader = update
-            updatesHeaderIndex = utils.getIndexList(updatesHeader)
-        else:
-
-            if(c==1):
-                firstUpdate = update
+                    for collector in list(self.prior_routes[prefix].keys()):
+                        if(not collector in self.params[&#34;Collectors&#34;]):
+                            del self.prior_routes[prefix][collector]
             else:
-                lastUpdate = update
-
-        c += 1
-
-    self.startTime = int(firstUpdate[updatesHeader.index(&#34;time&#34;)])
-    self.endTime = int(lastUpdate[updatesHeader.index(&#34;time&#34;)])
+                del self.prior_routes[prefix]
+    
+    self.log(&#34;Get updates infos&#34;)
+    self.header, self.startTime, self.endTime = getUpdatesInfos(self.dataFile)
     
     if(self.params[&#34;NbSnapshots&#34;]==None):
         self.T = ceil((self.endTime-self.startTime)/60 /self.params[&#34;Period&#34;]) + 1 # +1 because the first snapshot is at t=0
     else:
         self.T = self.params[&#34;NbSnapshots&#34;]
-        
-    self.end = c-1</code></pre>
-</details>
-</dd>
-<dt id="BML.transform.base_transform.BaseTransform.isRunning"><code class="name flex">
-<span>def <span class="ident">isRunning</span></span>(<span>self)</span>
-</code></dt>
-<dd>
-<div class="desc"></div>
-<details class="source">
-<summary>
-<span>Expand source code</span>
-</summary>
-<pre><code class="python">def isRunning(self):
-    return(not self.finished)</code></pre>
-</details>
-</dd>
-<dt id="BML.transform.base_transform.BaseTransform.parseUpdate"><code class="name flex">
-<span>def <span class="ident">parseUpdate</span></span>(<span>self, lineSplited, header)</span>
-</code></dt>
-<dd>
-<div class="desc"></div>
-<details class="source">
-<summary>
-<span>Expand source code</span>
-</summary>
-<pre><code class="python">def parseUpdate(self, lineSplited, header):
-
-    u= {}
-
-    u[&#39;collector&#39;] = lineSplited[header[&#39;collector&#39;]]
-    u[&#39;dump_time&#39;] = lineSplited[header[&#39;dump_time&#39;]]
-    u[&#39;type&#39;] = lineSplited[header[&#39;type&#39;]]
-    u[&#39;time&#39;] = lineSplited[header[&#39;time&#39;]]
-    u[&#39;peer_address&#39;] = lineSplited[header[&#39;peer_address&#39;]]
-    u[&#39;peer_asn&#39;] = lineSplited[header[&#39;peer_asn&#39;]]
-    u[&#39;fields&#39;] = json.loads(&#34;,&#34;.join(lineSplited[header[&#39;fields&#39;]::]))
-
-    return(u)</code></pre>
+    
+    self.startProgress = self.startTime
+    self.endProgress= self.endTime</code></pre>
 </details>
 </dd>
 <dt id="BML.transform.base_transform.BaseTransform.postProcess"><code class="name flex">
@@ -890,86 +779,8 @@ else to the thread.</p></div>
     return(None)</code></pre>
 </details>
 </dd>
-<dt id="BML.transform.base_transform.BaseTransform.prepare"><code class="name flex">
-<span>def <span class="ident">prepare</span></span>(<span>self)</span>
-</code></dt>
-<dd>
-<div class="desc"></div>
-<details class="source">
-<summary>
-<span>Expand source code</span>
-</summary>
-<pre><code class="python">def prepare(self):
-
-    utils.printAndLog(&#34;Prepare&#34;, self.logFiles)
-
-    priming_data_filepath = self.folder + os.sep + &#34;priming_data&#34; + os.sep + &#34;routes.json&#34;
-    updates_filepath = self.folder + os.sep + &#34;data&#34; + os.sep + &#34;updates.csv&#34;
-
-    if(self.loadPrimingData):
-        utils.printAndLog(&#34;Ungzip priming data&#34;, self.logFiles)
-        utils.ungzipFile(priming_data_filepath + &#34;.gz&#34;)
-
-    utils.printAndLog(&#34;Ungzip updates&#34;, self.logFiles)
-    utils.ungzipFile(updates_filepath + &#34;.gz&#34;)
-
-    self.priming_data_filepath = priming_data_filepath
-    self.updates_filepath = updates_filepath
-
-    utils.printAndLog(&#34;Load priming data&#34;, self.logFiles)
-
-    self.prior_routes = {}
-    if(self.loadPrimingData):
-        self.prior_routes = json.load(open(priming_data_filepath))
-        for prefix in list(self.prior_routes.keys()):
-
-            network = ip.ip_network(prefix)
-
-            if(network.version in self.params[&#34;IpVersion&#34;]):
-    
-                if(len(self.params[&#34;Collectors&#34;])&gt;0):
-
-                    for collector in list(self.prior_routes[prefix].keys()):
-                        if(not collector in self.params[&#34;Collectors&#34;]):
-                            self.prior_routes[prefix].pop(collector)
-            else:
-                self.prior_routes.pop(prefix)</code></pre>
-</details>
-</dd>
-<dt id="BML.transform.base_transform.BaseTransform.run"><code class="name flex">
-<span>def <span class="ident">run</span></span>(<span>self)</span>
-</code></dt>
-<dd>
-<div class="desc"><p>Method representing the thread's activity.</p>
-<p>You may override this method in a subclass. The standard run() method
-invokes the callable object passed to the object's constructor as the
-target argument, if any, with sequential and keyword arguments taken
-from the args and kwargs arguments, respectively.</p></div>
-<details class="source">
-<summary>
-<span>Expand source code</span>
-</summary>
-<pre><code class="python">def run(self):
-
-    self.prepare()
-
-    self.init()
-
-    self.compute()
-
-    self.transformedData = self.postProcess(self.transformedData)
-
-    if(os.path.exists(self.updates_filepath+&#34;.gz&#34;)):
-        os.remove(self.updates_filepath)
-    if(os.path.exists(self.priming_data_filepath+&#34;.gz&#34;)):
-        if(self.loadPrimingData):
-            os.remove(self.priming_data_filepath)
-    
-    self.finished = True</code></pre>
-</details>
-</dd>
 <dt id="BML.transform.base_transform.BaseTransform.save"><code class="name flex">
-<span>def <span class="ident">save</span></span>(<span>self, gzip=True)</span>
+<span>def <span class="ident">save</span></span>(<span>self)</span>
 </code></dt>
 <dd>
 <div class="desc"></div>
@@ -977,98 +788,10 @@ from the args and kwargs arguments, respectively.</p></div>
 <summary>
 <span>Expand source code</span>
 </summary>
-<pre><code class="python">def save(self, gzip=True):
-
-    self.saveData(utils.mkdirPath(self.outputFolder), self.getOutputFilename(), self.transformedData, gzip)
-
-    utils.printAndLog(&#34;saved&#34;, self.logFiles)</code></pre>
-</details>
-</dd>
-<dt id="BML.transform.base_transform.BaseTransform.saveData"><code class="name flex">
-<span>def <span class="ident">saveData</span></span>(<span>self, folder, fileName, data, gzip)</span>
-</code></dt>
-<dd>
-<div class="desc"></div>
-<details class="source">
-<summary>
-<span>Expand source code</span>
-</summary>
-<pre><code class="python">def saveData(self, folder, fileName, data, gzip):
-
-    filePath = folder + fileName + &#34;.json&#34;
-
-    with open(filePath, &#39;w&#39;) as outfile:
-        json.dump(data, outfile)
-
-    if(gzip):
-        utils.gzipFile(filePath)
-        filePath += &#34;.gz&#34;</code></pre>
-</details>
-</dd>
-<dt id="BML.transform.base_transform.BaseTransform.setFolder"><code class="name flex">
-<span>def <span class="ident">setFolder</span></span>(<span>self, folder)</span>
-</code></dt>
-<dd>
-<div class="desc"></div>
-<details class="source">
-<summary>
-<span>Expand source code</span>
-</summary>
-<pre><code class="python">def setFolder(self, folder):
-    self.folder = folder</code></pre>
-</details>
-</dd>
-<dt id="BML.transform.base_transform.BaseTransform.setLogFiles"><code class="name flex">
-<span>def <span class="ident">setLogFiles</span></span>(<span>self, logFiles)</span>
-</code></dt>
-<dd>
-<div class="desc"></div>
-<details class="source">
-<summary>
-<span>Expand source code</span>
-</summary>
-<pre><code class="python">def setLogFiles(self, logFiles):
-    self.logFiles = logFiles</code></pre>
-</details>
-</dd>
-<dt id="BML.transform.base_transform.BaseTransform.setOutputFolder"><code class="name flex">
-<span>def <span class="ident">setOutputFolder</span></span>(<span>self, outputFolder)</span>
-</code></dt>
-<dd>
-<div class="desc"></div>
-<details class="source">
-<summary>
-<span>Expand source code</span>
-</summary>
-<pre><code class="python">def setOutputFolder(self, outputFolder):
-    self.outputFolder = outputFolder</code></pre>
-</details>
-</dd>
-<dt id="BML.transform.base_transform.BaseTransform.setParams"><code class="name flex">
-<span>def <span class="ident">setParams</span></span>(<span>self, params)</span>
-</code></dt>
-<dd>
-<div class="desc"></div>
-<details class="source">
-<summary>
-<span>Expand source code</span>
-</summary>
-<pre><code class="python">def setParams(self, params):
-    for k,v in params.items():
-        self.params[k] = v</code></pre>
-</details>
-</dd>
-<dt id="BML.transform.base_transform.BaseTransform.stop"><code class="name flex">
-<span>def <span class="ident">stop</span></span>(<span>self)</span>
-</code></dt>
-<dd>
-<div class="desc"></div>
-<details class="source">
-<summary>
-<span>Expand source code</span>
-</summary>
-<pre><code class="python">def stop(self):
-    self.terminate()</code></pre>
+<pre><code class="python">def save(self):
+    with open(self.filePath, &#39;w&#39;) as outfile:
+        json.dump(self.transformedData, outfile)
+    self.log(&#34;saved&#34;)</code></pre>
 </details>
 </dd>
 <dt id="BML.transform.base_transform.BaseTransform.transforms"><code class="name flex">
@@ -1088,36 +811,22 @@ from the args and kwargs arguments, respectively.</p></div>
 </dd>
 <dt id="BML.transform.base_transform.BaseTransformParallelized"><code class="flex name class">
 <span>class <span class="ident">BaseTransformParallelized</span></span>
+<span>(</span><span>primingFile, dataFile, params, outFolder, logFiles)</span>
 </code></dt>
 <dd>
-<div class="desc"><p>A class that represents a thread of control.</p>
-<p>This class can be safely subclassed in a limited fashion. There are two ways
-to specify the activity: by passing a callable object to the constructor, or
-by overriding the run() method in a subclass.</p>
-<p>This constructor should always be called with keyword arguments. Arguments are:</p>
-<p><em>group</em> should be None; reserved for future extension when a ThreadGroup
-class is implemented.</p>
-<p><em>target</em> is the callable object to be invoked by the run()
-method. Defaults to None, meaning nothing is called.</p>
-<p><em>name</em> is the thread name. By default, a unique name is constructed of
-the form "Thread-N" where N is a small decimal number.</p>
-<p><em>args</em> is the argument tuple for the target invocation. Defaults to ().</p>
-<p><em>kwargs</em> is a dictionary of keyword arguments for the target
-invocation. Defaults to {}.</p>
-<p>If a subclass overrides the constructor, it must make sure to invoke
-the base class constructor (Thread.<strong>init</strong>()) before doing anything
-else to the thread.</p></div>
+<div class="desc"></div>
 <details class="source">
 <summary>
 <span>Expand source code</span>
 </summary>
 <pre><code class="python">class BaseTransformParallelized(BaseTransform):
 
-    def __init__(self):
-
-        BaseTransform.__init__(self)
+    def __init__(self, primingFile, dataFile, params, outFolder, logFiles):
+        
         self.params[&#34;nbProcess&#34;] = multiprocessing.cpu_count()
-
+        
+        BaseTransform.__init__(self, primingFile, dataFile, params, outFolder, logFiles)
+        
     def preProcess(self):
         manager = multiprocessing.Manager()
         self.data = manager.dict()
@@ -1138,7 +847,6 @@ else to the thread.</p></div>
         for i in range(len(self.data)):
             if(i in self.data):
                 self.transformedData.append(self.data[i])
-                #self.transformedData.append(self.data[i].copy())
                 del self.data[i]
 
     def runTransforms(self, data, index, routes, updates):
@@ -1150,12 +858,11 @@ else to the thread.</p></div>
 <h3>Ancestors</h3>
 <ul class="hlist">
 <li><a title="BML.transform.base_transform.BaseTransform" href="#BML.transform.base_transform.BaseTransform">BaseTransform</a></li>
-<li>threading.Thread</li>
+<li><a title="BML.utils.bml_process.BmlProcess" href="../utils/bml_process.html#BML.utils.bml_process.BmlProcess">BmlProcess</a></li>
 </ul>
 <h3>Subclasses</h3>
 <ul class="hlist">
 <li><a title="BML.transform.graph.Graph" href="graph.html#BML.transform.graph.Graph">Graph</a></li>
-<li><a title="BML.transform.graph.Graphv2" href="graph.html#BML.transform.graph.Graphv2">Graphv2</a></li>
 <li><a title="BML.transform.graph.WeightedGraph" href="graph.html#BML.transform.graph.WeightedGraph">WeightedGraph</a></li>
 <li><a title="BML.transform.hijackAnalyze.HijackAnalyze" href="hijackAnalyze.html#BML.transform.hijackAnalyze.HijackAnalyze">HijackAnalyze</a></li>
 <li><a title="BML.transform.hijackLabel.HijackLabel" href="hijackLabel.html#BML.transform.hijackLabel.HijackLabel">HijackLabel</a></li>
@@ -1180,7 +887,6 @@ else to the thread.</p></div>
     for i in range(len(self.data)):
         if(i in self.data):
             self.transformedData.append(self.data[i])
-            #self.transformedData.append(self.data[i].copy())
             del self.data[i]</code></pre>
 </details>
 </dd>
@@ -1232,20 +938,12 @@ else to the thread.</p></div>
 </details>
 </dd>
 </dl>
-<h3>Inherited members</h3>
-<ul class="hlist">
-<li><code><b><a title="BML.transform.base_transform.BaseTransform" href="#BML.transform.base_transform.BaseTransform">BaseTransform</a></b></code>:
-<ul class="hlist">
-<li><code><a title="BML.transform.base_transform.BaseTransform.run" href="#BML.transform.base_transform.BaseTransform.run">run</a></code></li>
-</ul>
-</li>
-</ul>
 </dd>
 </dl>
 </section>
 </article>
 <nav id="sidebar">
-<a href="" style="font-size:4em;color:#058">BML</a>
+<a href="https://kevinhoarau.github.io/BML/" style="font-size:4em;color:#058">BML</a>
 <hr style="margin-top:30px;margin-bottom:30px;">
 <form>
 <input id="lunr-search" name="q" placeholder="🔎 Search ..." aria-label="Search"
@@ -1281,7 +979,7 @@ const query = new URL(window.location).searchParams.get('q');
 if (query)
 search(query);
 function search(query) {
-const url = '../../doc-search.html#' + encodeURIComponent(query);
+const url = '../search.html#' + encodeURIComponent(query);
 new tingle.modal({
 cssClass: ['modal-dialog'],
 onClose: () => {
@@ -1303,6 +1001,11 @@ setTimeout(() => input.focus(), 100);
 <li><code><a title="BML.transform" href="index.html">BML.transform</a></code></li>
 </ul>
 </li>
+<li><h3><a href="#header-functions">Functions</a></h3>
+<ul class="">
+<li><code><a title="BML.transform.base_transform.transform" href="#BML.transform.base_transform.transform">transform</a></code></li>
+</ul>
+</li>
 <li><h3><a href="#header-classes">Classes</a></h3>
 <ul>
 <li>
@@ -1311,24 +1014,18 @@ setTimeout(() => input.focus(), 100);
 <li><code><a title="BML.transform.base_transform.BaseTransform.compute" href="#BML.transform.base_transform.BaseTransform.compute">compute</a></code></li>
 <li><code><a title="BML.transform.base_transform.BaseTransform.computeRoutes" href="#BML.transform.base_transform.BaseTransform.computeRoutes">computeRoutes</a></code></li>
 <li><code><a title="BML.transform.base_transform.BaseTransform.computeSnapshot" href="#BML.transform.base_transform.BaseTransform.computeSnapshot">computeSnapshot</a></code></li>
+<li><code><a title="BML.transform.base_transform.BaseTransform.computeUpdates" href="#BML.transform.base_transform.BaseTransform.computeUpdates">computeUpdates</a></code></li>
+<li><code><a title="BML.transform.base_transform.BaseTransform.execute" href="#BML.transform.base_transform.BaseTransform.execute">execute</a></code></li>
 <li><code><a title="BML.transform.base_transform.BaseTransform.exists" href="#BML.transform.base_transform.BaseTransform.exists">exists</a></code></li>
-<li><code><a title="BML.transform.base_transform.BaseTransform.getOutputFilename" href="#BML.transform.base_transform.BaseTransform.getOutputFilename">getOutputFilename</a></code></li>
-<li><code><a title="BML.transform.base_transform.BaseTransform.getProgress" href="#BML.transform.base_transform.BaseTransform.getProgress">getProgress</a></code></li>
+<li><code><a title="BML.transform.base_transform.BaseTransform.fileExtension" href="#BML.transform.base_transform.BaseTransform.fileExtension">fileExtension</a></code></li>
+<li><code><a title="BML.transform.base_transform.BaseTransform.getFileName" href="#BML.transform.base_transform.BaseTransform.getFileName">getFileName</a></code></li>
+<li><code><a title="BML.transform.base_transform.BaseTransform.getFilePath" href="#BML.transform.base_transform.BaseTransform.getFilePath">getFilePath</a></code></li>
 <li><code><a title="BML.transform.base_transform.BaseTransform.init" href="#BML.transform.base_transform.BaseTransform.init">init</a></code></li>
-<li><code><a title="BML.transform.base_transform.BaseTransform.isRunning" href="#BML.transform.base_transform.BaseTransform.isRunning">isRunning</a></code></li>
 <li><code><a title="BML.transform.base_transform.BaseTransform.loadPrimingData" href="#BML.transform.base_transform.BaseTransform.loadPrimingData">loadPrimingData</a></code></li>
-<li><code><a title="BML.transform.base_transform.BaseTransform.parseUpdate" href="#BML.transform.base_transform.BaseTransform.parseUpdate">parseUpdate</a></code></li>
+<li><code><a title="BML.transform.base_transform.BaseTransform.params" href="#BML.transform.base_transform.BaseTransform.params">params</a></code></li>
 <li><code><a title="BML.transform.base_transform.BaseTransform.postProcess" href="#BML.transform.base_transform.BaseTransform.postProcess">postProcess</a></code></li>
 <li><code><a title="BML.transform.base_transform.BaseTransform.preProcess" href="#BML.transform.base_transform.BaseTransform.preProcess">preProcess</a></code></li>
-<li><code><a title="BML.transform.base_transform.BaseTransform.prepare" href="#BML.transform.base_transform.BaseTransform.prepare">prepare</a></code></li>
-<li><code><a title="BML.transform.base_transform.BaseTransform.run" href="#BML.transform.base_transform.BaseTransform.run">run</a></code></li>
 <li><code><a title="BML.transform.base_transform.BaseTransform.save" href="#BML.transform.base_transform.BaseTransform.save">save</a></code></li>
-<li><code><a title="BML.transform.base_transform.BaseTransform.saveData" href="#BML.transform.base_transform.BaseTransform.saveData">saveData</a></code></li>
-<li><code><a title="BML.transform.base_transform.BaseTransform.setFolder" href="#BML.transform.base_transform.BaseTransform.setFolder">setFolder</a></code></li>
-<li><code><a title="BML.transform.base_transform.BaseTransform.setLogFiles" href="#BML.transform.base_transform.BaseTransform.setLogFiles">setLogFiles</a></code></li>
-<li><code><a title="BML.transform.base_transform.BaseTransform.setOutputFolder" href="#BML.transform.base_transform.BaseTransform.setOutputFolder">setOutputFolder</a></code></li>
-<li><code><a title="BML.transform.base_transform.BaseTransform.setParams" href="#BML.transform.base_transform.BaseTransform.setParams">setParams</a></code></li>
-<li><code><a title="BML.transform.base_transform.BaseTransform.stop" href="#BML.transform.base_transform.BaseTransform.stop">stop</a></code></li>
 <li><code><a title="BML.transform.base_transform.BaseTransform.transforms" href="#BML.transform.base_transform.BaseTransform.transforms">transforms</a></code></li>
 </ul>
 </li>
@@ -1347,7 +1044,7 @@ setTimeout(() => input.focus(), 100);
 </nav>
 </main>
 <footer id="footer">
-<p>Generated by <a href="https://pdoc3.github.io/pdoc"><cite>pdoc</cite> 0.9.2</a>.</p>
+<p>Generated by <a href="https://pdoc3.github.io/pdoc"><cite>pdoc</cite> 0.9.1</a>.</p>
 </footer>
 </body>
 </html>

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1" />
-<meta name="generator" content="pdoc 0.9.2" />
+<meta name="generator" content="pdoc 0.9.1" />
 <title>BML.transform.graph API documentation</title>
 <meta name="description" content="" />
 <link rel="preload stylesheet" as="style" href="https://cdnjs.cloudflare.com/ajax/libs/10up-sanitize.css/11.0.1/sanitize.min.css" integrity="sha256-PK9q560IAAa6WVRRh76LtCaI8pjTJ2z11v0miyNNjrs=" crossorigin>
@@ -36,6 +36,8 @@ import numpy as np
 import pandas as pd
 
 import multiprocessing
+
+import pickle
 
 def buildWeightedGraph(routes):
 
@@ -126,130 +128,30 @@ def buildGraph(routes):
     return(G)
 
 
-def getEdges(routes, keys, edgeslist, index):
-
-    try:
-
-        edges = set()
-
-        for prefix in keys:
-
-            for collector in routes[prefix].keys():
-                
-                for peer in routes[prefix][collector].keys():
-                    path = routes[prefix][collector][peer]
-
-                    if(path != None):
-
-                        if(&#39;{&#39; in path or &#39;}&#39; in path):
-                            pass
-                        else:
-
-                            path_vertices = path.split(&#39; &#39;)
-
-                            for i in range(len(path_vertices)-1):
-                                a,b = (path_vertices[i], path_vertices[i+1])
-                                if(a!=b):
-                                    edges.add((a,b))
-        edgeslist[index] = edges
-
-    except KeyboardInterrupt:
-        pass
-
-
-def buildGraphParallelized(routes, nbProcess=16):
-
-    G =  nx.Graph()
-
-    manager = multiprocessing.Manager()
-    edgeslist = manager.dict()
-
-    keys = [*routes.keys()]
-    jobs = []
-    try:
-        for i in range(nbProcess):
-            p = multiprocessing.Process(target=getEdges, args=(routes, keys[i::nbProcess], edgeslist, i))
-            jobs.append(p)
-            p.start()
-        for p in jobs:
-            p.join()
-            p.close()
-
-    except KeyboardInterrupt:
-        print(&#34;buildGraphParallelized: terminate running jobs&#34;)
-        for p in jobs:
-            p.terminate()
-            p.join()
-            p.close()
-        print(&#34;buildGraphParallelized: done&#34;)
-    
-    l = []
-    for i in range(len(edgeslist)):
-        for e in edgeslist[i]:
-            l.append(e)
-        del edgeslist[i]
-
-    edges = set(l)
-    G.add_edges_from(edges)
-
-    return(G)
-
 class Graph(BaseTransformParallelized):
+    
+    computeUpdates = False
+    
+    fileExtension = &#34;.pickle&#34;
 
-    def __init__(self):
+    def __init__(self, primingFile, dataFile, params, outFolder, logFiles):
 
-        BaseTransformParallelized.__init__(self)
+        BaseTransformParallelized.__init__(self, primingFile, dataFile, params, outFolder, logFiles)
         
     def runTransforms(self, data, index, routes, updates):
         G = buildGraph(routes)
+        del routes
         data[index] = self.transforms(index, G)
         del G
         return(None)
+    
+    def save(self):
+        with open(self.filePath, &#39;wb&#39;) as outfile:
+            pickle.dump(self.transformedData, outfile)
+        self.log(&#34;saved&#34;)
 
     def transforms(self, index, G):
-        
-        G = nx.convert_node_labels_to_integers(G)
-        
-        graphData = {
-            &#34;edge_data&#34;: list(G.edges.data()),
-            &#34;node_data&#34;: list(G.nodes.data())
-
-        }
-
-        return(graphData)
-
-class Graphv2(BaseTransformParallelized):
-
-    def __init__(self):
-
-        BaseTransformParallelized.__init__(self)
-        self.params[&#34;nbProcessGraph&#34;] = multiprocessing.cpu_count()
-
-    def computeSnapshot(self, t, routes, updatesParsed):
-        self.pq.waitUntilFree()
-        G = buildGraphParallelized(routes, self.params[&#34;nbProcessGraph&#34;])
-        self.pq.addProcess(target=self.runTransforms, args=(self.data, t, G))
-        if(t%self.params[&#34;nbProcess&#34;]==self.params[&#34;nbProcess&#34;]-1):
-            self.pq.runOnce()
-
-    def runTransforms(self, data, index, G):
-        data[index] = self.transforms(index, G)
-        del G
-        return(None)
-
-    def transforms(self, index, G):
-        
-        G = nx.convert_node_labels_to_integers(G)
-        
-        graphData = {
-            &#34;edge_data&#34;: list(G.edges.data()),
-            &#34;node_data&#34;: list(G.nodes.data())
-
-        }
-
-        return(graphData)
-
-
+        return(G)
 
 def getWeightedSubgraph(routes, keys, graphlist, index):
 
@@ -435,53 +337,6 @@ class WeightedGraph(BaseTransformParallelized):
     return(G)</code></pre>
 </details>
 </dd>
-<dt id="BML.transform.graph.buildGraphParallelized"><code class="name flex">
-<span>def <span class="ident">buildGraphParallelized</span></span>(<span>routes, nbProcess=16)</span>
-</code></dt>
-<dd>
-<div class="desc"></div>
-<details class="source">
-<summary>
-<span>Expand source code</span>
-</summary>
-<pre><code class="python">def buildGraphParallelized(routes, nbProcess=16):
-
-    G =  nx.Graph()
-
-    manager = multiprocessing.Manager()
-    edgeslist = manager.dict()
-
-    keys = [*routes.keys()]
-    jobs = []
-    try:
-        for i in range(nbProcess):
-            p = multiprocessing.Process(target=getEdges, args=(routes, keys[i::nbProcess], edgeslist, i))
-            jobs.append(p)
-            p.start()
-        for p in jobs:
-            p.join()
-            p.close()
-
-    except KeyboardInterrupt:
-        print(&#34;buildGraphParallelized: terminate running jobs&#34;)
-        for p in jobs:
-            p.terminate()
-            p.join()
-            p.close()
-        print(&#34;buildGraphParallelized: done&#34;)
-    
-    l = []
-    for i in range(len(edgeslist)):
-        for e in edgeslist[i]:
-            l.append(e)
-        del edgeslist[i]
-
-    edges = set(l)
-    G.add_edges_from(edges)
-
-    return(G)</code></pre>
-</details>
-</dd>
 <dt id="BML.transform.graph.buildWeightedGraph"><code class="name flex">
 <span>def <span class="ident">buildWeightedGraph</span></span>(<span>routes)</span>
 </code></dt>
@@ -601,46 +456,6 @@ class WeightedGraph(BaseTransformParallelized):
     return(G)</code></pre>
 </details>
 </dd>
-<dt id="BML.transform.graph.getEdges"><code class="name flex">
-<span>def <span class="ident">getEdges</span></span>(<span>routes, keys, edgeslist, index)</span>
-</code></dt>
-<dd>
-<div class="desc"></div>
-<details class="source">
-<summary>
-<span>Expand source code</span>
-</summary>
-<pre><code class="python">def getEdges(routes, keys, edgeslist, index):
-
-    try:
-
-        edges = set()
-
-        for prefix in keys:
-
-            for collector in routes[prefix].keys():
-                
-                for peer in routes[prefix][collector].keys():
-                    path = routes[prefix][collector][peer]
-
-                    if(path != None):
-
-                        if(&#39;{&#39; in path or &#39;}&#39; in path):
-                            pass
-                        else:
-
-                            path_vertices = path.split(&#39; &#39;)
-
-                            for i in range(len(path_vertices)-1):
-                                a,b = (path_vertices[i], path_vertices[i+1])
-                                if(a!=b):
-                                    edges.add((a,b))
-        edgeslist[index] = edges
-
-    except KeyboardInterrupt:
-        pass</code></pre>
-</details>
-</dd>
 <dt id="BML.transform.graph.getWeightedSubgraph"><code class="name flex">
 <span>def <span class="ident">getWeightedSubgraph</span></span>(<span>routes, keys, graphlist, index)</span>
 </code></dt>
@@ -722,65 +537,60 @@ class WeightedGraph(BaseTransformParallelized):
 <dl>
 <dt id="BML.transform.graph.Graph"><code class="flex name class">
 <span>class <span class="ident">Graph</span></span>
+<span>(</span><span>primingFile, dataFile, params, outFolder, logFiles)</span>
 </code></dt>
 <dd>
-<div class="desc"><p>A class that represents a thread of control.</p>
-<p>This class can be safely subclassed in a limited fashion. There are two ways
-to specify the activity: by passing a callable object to the constructor, or
-by overriding the run() method in a subclass.</p>
-<p>This constructor should always be called with keyword arguments. Arguments are:</p>
-<p><em>group</em> should be None; reserved for future extension when a ThreadGroup
-class is implemented.</p>
-<p><em>target</em> is the callable object to be invoked by the run()
-method. Defaults to None, meaning nothing is called.</p>
-<p><em>name</em> is the thread name. By default, a unique name is constructed of
-the form "Thread-N" where N is a small decimal number.</p>
-<p><em>args</em> is the argument tuple for the target invocation. Defaults to ().</p>
-<p><em>kwargs</em> is a dictionary of keyword arguments for the target
-invocation. Defaults to {}.</p>
-<p>If a subclass overrides the constructor, it must make sure to invoke
-the base class constructor (Thread.<strong>init</strong>()) before doing anything
-else to the thread.</p></div>
+<div class="desc"></div>
 <details class="source">
 <summary>
 <span>Expand source code</span>
 </summary>
 <pre><code class="python">class Graph(BaseTransformParallelized):
+    
+    computeUpdates = False
+    
+    fileExtension = &#34;.pickle&#34;
 
-    def __init__(self):
+    def __init__(self, primingFile, dataFile, params, outFolder, logFiles):
 
-        BaseTransformParallelized.__init__(self)
+        BaseTransformParallelized.__init__(self, primingFile, dataFile, params, outFolder, logFiles)
         
     def runTransforms(self, data, index, routes, updates):
         G = buildGraph(routes)
+        del routes
         data[index] = self.transforms(index, G)
         del G
         return(None)
+    
+    def save(self):
+        with open(self.filePath, &#39;wb&#39;) as outfile:
+            pickle.dump(self.transformedData, outfile)
+        self.log(&#34;saved&#34;)
 
     def transforms(self, index, G):
-        
-        G = nx.convert_node_labels_to_integers(G)
-        
-        graphData = {
-            &#34;edge_data&#34;: list(G.edges.data()),
-            &#34;node_data&#34;: list(G.nodes.data())
-
-        }
-
-        return(graphData)</code></pre>
+        return(G)</code></pre>
 </details>
 <h3>Ancestors</h3>
 <ul class="hlist">
 <li><a title="BML.transform.base_transform.BaseTransformParallelized" href="base_transform.html#BML.transform.base_transform.BaseTransformParallelized">BaseTransformParallelized</a></li>
 <li><a title="BML.transform.base_transform.BaseTransform" href="base_transform.html#BML.transform.base_transform.BaseTransform">BaseTransform</a></li>
-<li>threading.Thread</li>
+<li><a title="BML.utils.bml_process.BmlProcess" href="../utils/bml_process.html#BML.utils.bml_process.BmlProcess">BmlProcess</a></li>
 </ul>
 <h3>Subclasses</h3>
 <ul class="hlist">
-<li><a title="BML.transform.graph_dgl.GraphDGL" href="graph_dgl.html#BML.transform.graph_dgl.GraphDGL">GraphDGL</a></li>
-<li><a title="BML.transform.graph_features.GraphFeatures" href="graph_features.html#BML.transform.graph_features.GraphFeatures">GraphFeatures</a></li>
 <li><a title="BML.transform.nodes_features.NodesFeatures" href="nodes_features.html#BML.transform.nodes_features.NodesFeatures">NodesFeatures</a></li>
 </ul>
+<h3>Class variables</h3>
+<dl>
+<dt id="BML.transform.graph.Graph.computeUpdates"><code class="name">var <span class="ident">computeUpdates</span></code></dt>
+<dd>
+<div class="desc"></div>
+</dd>
+<dt id="BML.transform.graph.Graph.fileExtension"><code class="name">var <span class="ident">fileExtension</span></code></dt>
+<dd>
+<div class="desc"></div>
+</dd>
+</dl>
 <h3>Methods</h3>
 <dl>
 <dt id="BML.transform.graph.Graph.runTransforms"><code class="name flex">
@@ -794,9 +604,25 @@ else to the thread.</p></div>
 </summary>
 <pre><code class="python">def runTransforms(self, data, index, routes, updates):
     G = buildGraph(routes)
+    del routes
     data[index] = self.transforms(index, G)
     del G
     return(None)</code></pre>
+</details>
+</dd>
+<dt id="BML.transform.graph.Graph.save"><code class="name flex">
+<span>def <span class="ident">save</span></span>(<span>self)</span>
+</code></dt>
+<dd>
+<div class="desc"></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def save(self):
+    with open(self.filePath, &#39;wb&#39;) as outfile:
+        pickle.dump(self.transformedData, outfile)
+    self.log(&#34;saved&#34;)</code></pre>
 </details>
 </dd>
 <dt id="BML.transform.graph.Graph.transforms"><code class="name flex">
@@ -809,177 +635,16 @@ else to the thread.</p></div>
 <span>Expand source code</span>
 </summary>
 <pre><code class="python">def transforms(self, index, G):
-    
-    G = nx.convert_node_labels_to_integers(G)
-    
-    graphData = {
-        &#34;edge_data&#34;: list(G.edges.data()),
-        &#34;node_data&#34;: list(G.nodes.data())
-
-    }
-
-    return(graphData)</code></pre>
+    return(G)</code></pre>
 </details>
 </dd>
 </dl>
-<h3>Inherited members</h3>
-<ul class="hlist">
-<li><code><b><a title="BML.transform.base_transform.BaseTransformParallelized" href="base_transform.html#BML.transform.base_transform.BaseTransformParallelized">BaseTransformParallelized</a></b></code>:
-<ul class="hlist">
-<li><code><a title="BML.transform.base_transform.BaseTransformParallelized.run" href="base_transform.html#BML.transform.base_transform.BaseTransform.run">run</a></code></li>
-</ul>
-</li>
-</ul>
-</dd>
-<dt id="BML.transform.graph.Graphv2"><code class="flex name class">
-<span>class <span class="ident">Graphv2</span></span>
-</code></dt>
-<dd>
-<div class="desc"><p>A class that represents a thread of control.</p>
-<p>This class can be safely subclassed in a limited fashion. There are two ways
-to specify the activity: by passing a callable object to the constructor, or
-by overriding the run() method in a subclass.</p>
-<p>This constructor should always be called with keyword arguments. Arguments are:</p>
-<p><em>group</em> should be None; reserved for future extension when a ThreadGroup
-class is implemented.</p>
-<p><em>target</em> is the callable object to be invoked by the run()
-method. Defaults to None, meaning nothing is called.</p>
-<p><em>name</em> is the thread name. By default, a unique name is constructed of
-the form "Thread-N" where N is a small decimal number.</p>
-<p><em>args</em> is the argument tuple for the target invocation. Defaults to ().</p>
-<p><em>kwargs</em> is a dictionary of keyword arguments for the target
-invocation. Defaults to {}.</p>
-<p>If a subclass overrides the constructor, it must make sure to invoke
-the base class constructor (Thread.<strong>init</strong>()) before doing anything
-else to the thread.</p></div>
-<details class="source">
-<summary>
-<span>Expand source code</span>
-</summary>
-<pre><code class="python">class Graphv2(BaseTransformParallelized):
-
-    def __init__(self):
-
-        BaseTransformParallelized.__init__(self)
-        self.params[&#34;nbProcessGraph&#34;] = multiprocessing.cpu_count()
-
-    def computeSnapshot(self, t, routes, updatesParsed):
-        self.pq.waitUntilFree()
-        G = buildGraphParallelized(routes, self.params[&#34;nbProcessGraph&#34;])
-        self.pq.addProcess(target=self.runTransforms, args=(self.data, t, G))
-        if(t%self.params[&#34;nbProcess&#34;]==self.params[&#34;nbProcess&#34;]-1):
-            self.pq.runOnce()
-
-    def runTransforms(self, data, index, G):
-        data[index] = self.transforms(index, G)
-        del G
-        return(None)
-
-    def transforms(self, index, G):
-        
-        G = nx.convert_node_labels_to_integers(G)
-        
-        graphData = {
-            &#34;edge_data&#34;: list(G.edges.data()),
-            &#34;node_data&#34;: list(G.nodes.data())
-
-        }
-
-        return(graphData)</code></pre>
-</details>
-<h3>Ancestors</h3>
-<ul class="hlist">
-<li><a title="BML.transform.base_transform.BaseTransformParallelized" href="base_transform.html#BML.transform.base_transform.BaseTransformParallelized">BaseTransformParallelized</a></li>
-<li><a title="BML.transform.base_transform.BaseTransform" href="base_transform.html#BML.transform.base_transform.BaseTransform">BaseTransform</a></li>
-<li>threading.Thread</li>
-</ul>
-<h3>Methods</h3>
-<dl>
-<dt id="BML.transform.graph.Graphv2.computeSnapshot"><code class="name flex">
-<span>def <span class="ident">computeSnapshot</span></span>(<span>self, t, routes, updatesParsed)</span>
-</code></dt>
-<dd>
-<div class="desc"></div>
-<details class="source">
-<summary>
-<span>Expand source code</span>
-</summary>
-<pre><code class="python">def computeSnapshot(self, t, routes, updatesParsed):
-    self.pq.waitUntilFree()
-    G = buildGraphParallelized(routes, self.params[&#34;nbProcessGraph&#34;])
-    self.pq.addProcess(target=self.runTransforms, args=(self.data, t, G))
-    if(t%self.params[&#34;nbProcess&#34;]==self.params[&#34;nbProcess&#34;]-1):
-        self.pq.runOnce()</code></pre>
-</details>
-</dd>
-<dt id="BML.transform.graph.Graphv2.runTransforms"><code class="name flex">
-<span>def <span class="ident">runTransforms</span></span>(<span>self, data, index, G)</span>
-</code></dt>
-<dd>
-<div class="desc"></div>
-<details class="source">
-<summary>
-<span>Expand source code</span>
-</summary>
-<pre><code class="python">def runTransforms(self, data, index, G):
-    data[index] = self.transforms(index, G)
-    del G
-    return(None)</code></pre>
-</details>
-</dd>
-<dt id="BML.transform.graph.Graphv2.transforms"><code class="name flex">
-<span>def <span class="ident">transforms</span></span>(<span>self, index, G)</span>
-</code></dt>
-<dd>
-<div class="desc"></div>
-<details class="source">
-<summary>
-<span>Expand source code</span>
-</summary>
-<pre><code class="python">def transforms(self, index, G):
-    
-    G = nx.convert_node_labels_to_integers(G)
-    
-    graphData = {
-        &#34;edge_data&#34;: list(G.edges.data()),
-        &#34;node_data&#34;: list(G.nodes.data())
-
-    }
-
-    return(graphData)</code></pre>
-</details>
-</dd>
-</dl>
-<h3>Inherited members</h3>
-<ul class="hlist">
-<li><code><b><a title="BML.transform.base_transform.BaseTransformParallelized" href="base_transform.html#BML.transform.base_transform.BaseTransformParallelized">BaseTransformParallelized</a></b></code>:
-<ul class="hlist">
-<li><code><a title="BML.transform.base_transform.BaseTransformParallelized.run" href="base_transform.html#BML.transform.base_transform.BaseTransform.run">run</a></code></li>
-</ul>
-</li>
-</ul>
 </dd>
 <dt id="BML.transform.graph.WeightedGraph"><code class="flex name class">
 <span>class <span class="ident">WeightedGraph</span></span>
 </code></dt>
 <dd>
-<div class="desc"><p>A class that represents a thread of control.</p>
-<p>This class can be safely subclassed in a limited fashion. There are two ways
-to specify the activity: by passing a callable object to the constructor, or
-by overriding the run() method in a subclass.</p>
-<p>This constructor should always be called with keyword arguments. Arguments are:</p>
-<p><em>group</em> should be None; reserved for future extension when a ThreadGroup
-class is implemented.</p>
-<p><em>target</em> is the callable object to be invoked by the run()
-method. Defaults to None, meaning nothing is called.</p>
-<p><em>name</em> is the thread name. By default, a unique name is constructed of
-the form "Thread-N" where N is a small decimal number.</p>
-<p><em>args</em> is the argument tuple for the target invocation. Defaults to ().</p>
-<p><em>kwargs</em> is a dictionary of keyword arguments for the target
-invocation. Defaults to {}.</p>
-<p>If a subclass overrides the constructor, it must make sure to invoke
-the base class constructor (Thread.<strong>init</strong>()) before doing anything
-else to the thread.</p></div>
+<div class="desc"></div>
 <details class="source">
 <summary>
 <span>Expand source code</span>
@@ -1019,7 +684,7 @@ else to the thread.</p></div>
 <ul class="hlist">
 <li><a title="BML.transform.base_transform.BaseTransformParallelized" href="base_transform.html#BML.transform.base_transform.BaseTransformParallelized">BaseTransformParallelized</a></li>
 <li><a title="BML.transform.base_transform.BaseTransform" href="base_transform.html#BML.transform.base_transform.BaseTransform">BaseTransform</a></li>
-<li>threading.Thread</li>
+<li><a title="BML.utils.bml_process.BmlProcess" href="../utils/bml_process.html#BML.utils.bml_process.BmlProcess">BmlProcess</a></li>
 </ul>
 <h3>Methods</h3>
 <dl>
@@ -1078,20 +743,12 @@ else to the thread.</p></div>
 </details>
 </dd>
 </dl>
-<h3>Inherited members</h3>
-<ul class="hlist">
-<li><code><b><a title="BML.transform.base_transform.BaseTransformParallelized" href="base_transform.html#BML.transform.base_transform.BaseTransformParallelized">BaseTransformParallelized</a></b></code>:
-<ul class="hlist">
-<li><code><a title="BML.transform.base_transform.BaseTransformParallelized.run" href="base_transform.html#BML.transform.base_transform.BaseTransform.run">run</a></code></li>
-</ul>
-</li>
-</ul>
 </dd>
 </dl>
 </section>
 </article>
 <nav id="sidebar">
-<a href="" style="font-size:4em;color:#058">BML</a>
+<a href="https://kevinhoarau.github.io/BML/" style="font-size:4em;color:#058">BML</a>
 <hr style="margin-top:30px;margin-bottom:30px;">
 <form>
 <input id="lunr-search" name="q" placeholder="🔎 Search ..." aria-label="Search"
@@ -1127,7 +784,7 @@ const query = new URL(window.location).searchParams.get('q');
 if (query)
 search(query);
 function search(query) {
-const url = '../../doc-search.html#' + encodeURIComponent(query);
+const url = '../search.html#' + encodeURIComponent(query);
 new tingle.modal({
 cssClass: ['modal-dialog'],
 onClose: () => {
@@ -1152,10 +809,8 @@ setTimeout(() => input.focus(), 100);
 <li><h3><a href="#header-functions">Functions</a></h3>
 <ul class="">
 <li><code><a title="BML.transform.graph.buildGraph" href="#BML.transform.graph.buildGraph">buildGraph</a></code></li>
-<li><code><a title="BML.transform.graph.buildGraphParallelized" href="#BML.transform.graph.buildGraphParallelized">buildGraphParallelized</a></code></li>
 <li><code><a title="BML.transform.graph.buildWeightedGraph" href="#BML.transform.graph.buildWeightedGraph">buildWeightedGraph</a></code></li>
 <li><code><a title="BML.transform.graph.buildWeightedGraphParallelized" href="#BML.transform.graph.buildWeightedGraphParallelized">buildWeightedGraphParallelized</a></code></li>
-<li><code><a title="BML.transform.graph.getEdges" href="#BML.transform.graph.getEdges">getEdges</a></code></li>
 <li><code><a title="BML.transform.graph.getWeightedSubgraph" href="#BML.transform.graph.getWeightedSubgraph">getWeightedSubgraph</a></code></li>
 </ul>
 </li>
@@ -1164,16 +819,11 @@ setTimeout(() => input.focus(), 100);
 <li>
 <h4><code><a title="BML.transform.graph.Graph" href="#BML.transform.graph.Graph">Graph</a></code></h4>
 <ul class="">
+<li><code><a title="BML.transform.graph.Graph.computeUpdates" href="#BML.transform.graph.Graph.computeUpdates">computeUpdates</a></code></li>
+<li><code><a title="BML.transform.graph.Graph.fileExtension" href="#BML.transform.graph.Graph.fileExtension">fileExtension</a></code></li>
 <li><code><a title="BML.transform.graph.Graph.runTransforms" href="#BML.transform.graph.Graph.runTransforms">runTransforms</a></code></li>
+<li><code><a title="BML.transform.graph.Graph.save" href="#BML.transform.graph.Graph.save">save</a></code></li>
 <li><code><a title="BML.transform.graph.Graph.transforms" href="#BML.transform.graph.Graph.transforms">transforms</a></code></li>
-</ul>
-</li>
-<li>
-<h4><code><a title="BML.transform.graph.Graphv2" href="#BML.transform.graph.Graphv2">Graphv2</a></code></h4>
-<ul class="">
-<li><code><a title="BML.transform.graph.Graphv2.computeSnapshot" href="#BML.transform.graph.Graphv2.computeSnapshot">computeSnapshot</a></code></li>
-<li><code><a title="BML.transform.graph.Graphv2.runTransforms" href="#BML.transform.graph.Graphv2.runTransforms">runTransforms</a></code></li>
-<li><code><a title="BML.transform.graph.Graphv2.transforms" href="#BML.transform.graph.Graphv2.transforms">transforms</a></code></li>
 </ul>
 </li>
 <li>
@@ -1190,7 +840,7 @@ setTimeout(() => input.focus(), 100);
 </nav>
 </main>
 <footer id="footer">
-<p>Generated by <a href="https://pdoc3.github.io/pdoc"><cite>pdoc</cite> 0.9.2</a>.</p>
+<p>Generated by <a href="https://pdoc3.github.io/pdoc"><cite>pdoc</cite> 0.9.1</a>.</p>
 </footer>
 </body>
 </html>

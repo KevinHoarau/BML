@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1" />
-<meta name="generator" content="pdoc 0.9.2" />
+<meta name="generator" content="pdoc 0.9.1" />
 <title>BML.transform.hijackAnalyze API documentation</title>
 <meta name="description" content="" />
 <link rel="preload stylesheet" as="style" href="https://cdnjs.cloudflare.com/ajax/libs/10up-sanitize.css/11.0.1/sanitize.min.css" integrity="sha256-PK9q560IAAa6WVRRh76LtCaI8pjTJ2z11v0miyNNjrs=" crossorigin>
@@ -34,10 +34,12 @@ class HijackAnalyze(BaseTransformParallelized):
     computeRoutes = False
     loadPrimingData = False
     
-    def __init__(self):
-        BaseTransformParallelized.__init__(self)
+    def __init__(self, primingFile, dataFile, params, outFolder, logFiles):
+        
         self.params[&#34;hijack&#34;] = None
         self.params[&#34;summary&#34;] = True
+        
+        BaseTransformParallelized.__init__(self, primingFile, dataFile, params, outFolder, logFiles)
         
     def transforms(self, index, routes, updates):
         
@@ -202,25 +204,10 @@ class HijackAnalyze(BaseTransformParallelized):
 <dl>
 <dt id="BML.transform.hijackAnalyze.HijackAnalyze"><code class="flex name class">
 <span>class <span class="ident">HijackAnalyze</span></span>
+<span>(</span><span>primingFile, dataFile, params, outFolder, logFiles)</span>
 </code></dt>
 <dd>
-<div class="desc"><p>A class that represents a thread of control.</p>
-<p>This class can be safely subclassed in a limited fashion. There are two ways
-to specify the activity: by passing a callable object to the constructor, or
-by overriding the run() method in a subclass.</p>
-<p>This constructor should always be called with keyword arguments. Arguments are:</p>
-<p><em>group</em> should be None; reserved for future extension when a ThreadGroup
-class is implemented.</p>
-<p><em>target</em> is the callable object to be invoked by the run()
-method. Defaults to None, meaning nothing is called.</p>
-<p><em>name</em> is the thread name. By default, a unique name is constructed of
-the form "Thread-N" where N is a small decimal number.</p>
-<p><em>args</em> is the argument tuple for the target invocation. Defaults to ().</p>
-<p><em>kwargs</em> is a dictionary of keyword arguments for the target
-invocation. Defaults to {}.</p>
-<p>If a subclass overrides the constructor, it must make sure to invoke
-the base class constructor (Thread.<strong>init</strong>()) before doing anything
-else to the thread.</p></div>
+<div class="desc"></div>
 <details class="source">
 <summary>
 <span>Expand source code</span>
@@ -230,10 +217,12 @@ else to the thread.</p></div>
     computeRoutes = False
     loadPrimingData = False
     
-    def __init__(self):
-        BaseTransformParallelized.__init__(self)
+    def __init__(self, primingFile, dataFile, params, outFolder, logFiles):
+        
         self.params[&#34;hijack&#34;] = None
         self.params[&#34;summary&#34;] = True
+        
+        BaseTransformParallelized.__init__(self, primingFile, dataFile, params, outFolder, logFiles)
         
     def transforms(self, index, routes, updates):
         
@@ -390,7 +379,7 @@ else to the thread.</p></div>
 <ul class="hlist">
 <li><a title="BML.transform.base_transform.BaseTransformParallelized" href="base_transform.html#BML.transform.base_transform.BaseTransformParallelized">BaseTransformParallelized</a></li>
 <li><a title="BML.transform.base_transform.BaseTransform" href="base_transform.html#BML.transform.base_transform.BaseTransform">BaseTransform</a></li>
-<li>threading.Thread</li>
+<li><a title="BML.utils.bml_process.BmlProcess" href="../utils/bml_process.html#BML.utils.bml_process.BmlProcess">BmlProcess</a></li>
 </ul>
 <h3>Class variables</h3>
 <dl>
@@ -587,20 +576,12 @@ else to the thread.</p></div>
 </details>
 </dd>
 </dl>
-<h3>Inherited members</h3>
-<ul class="hlist">
-<li><code><b><a title="BML.transform.base_transform.BaseTransformParallelized" href="base_transform.html#BML.transform.base_transform.BaseTransformParallelized">BaseTransformParallelized</a></b></code>:
-<ul class="hlist">
-<li><code><a title="BML.transform.base_transform.BaseTransformParallelized.run" href="base_transform.html#BML.transform.base_transform.BaseTransform.run">run</a></code></li>
-</ul>
-</li>
-</ul>
 </dd>
 </dl>
 </section>
 </article>
 <nav id="sidebar">
-<a href="" style="font-size:4em;color:#058">BML</a>
+<a href="https://kevinhoarau.github.io/BML/" style="font-size:4em;color:#058">BML</a>
 <hr style="margin-top:30px;margin-bottom:30px;">
 <form>
 <input id="lunr-search" name="q" placeholder="🔎 Search ..." aria-label="Search"
@@ -636,7 +617,7 @@ const query = new URL(window.location).searchParams.get('q');
 if (query)
 search(query);
 function search(query) {
-const url = '../../doc-search.html#' + encodeURIComponent(query);
+const url = '../search.html#' + encodeURIComponent(query);
 new tingle.modal({
 cssClass: ['modal-dialog'],
 onClose: () => {
@@ -676,7 +657,7 @@ setTimeout(() => input.focus(), 100);
 </nav>
 </main>
 <footer id="footer">
-<p>Generated by <a href="https://pdoc3.github.io/pdoc"><cite>pdoc</cite> 0.9.2</a>.</p>
+<p>Generated by <a href="https://pdoc3.github.io/pdoc"><cite>pdoc</cite> 0.9.1</a>.</p>
 </footer>
 </body>
 </html>

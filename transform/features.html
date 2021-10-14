@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1" />
-<meta name="generator" content="pdoc 0.9.2" />
+<meta name="generator" content="pdoc 0.9.1" />
 <title>BML.transform.features API documentation</title>
 <meta name="description" content="" />
 <link rel="preload stylesheet" as="style" href="https://cdnjs.cloudflare.com/ajax/libs/10up-sanitize.css/11.0.1/sanitize.min.css" integrity="sha256-PK9q560IAAa6WVRRh76LtCaI8pjTJ2z11v0miyNNjrs=" crossorigin>
@@ -29,200 +29,173 @@
 <pre><code class="python">import editdistance
 from BML.transform import BaseTransform
 
-def selectedASes(routes, ASes, update):
-
-        if(ASes is None):
-                return(True)
-
-        path = []
-
-        if(update[&#34;type&#34;]==&#39;A&#39;):
-
-                path = update[&#34;fields&#34;][&#39;as-path&#39;].split(&#34; &#34;)
-
-        elif(update[&#34;type&#34;]==&#39;W&#39;):
-                if(update[&#34;peer_asn&#34;] in routes[update[&#34;fields&#34;][&#34;prefix&#34;]][update[&#34;collector&#34;]] and not routes[update[&#34;fields&#34;][&#34;prefix&#34;]][update[&#34;collector&#34;]][update[&#34;peer_asn&#34;]] is None):
-                        path = routes[update[&#34;fields&#34;][&#34;prefix&#34;]][update[&#34;collector&#34;]][update[&#34;peer_asn&#34;]].split(&#34; &#34;)
-
-        for AS in ASes:
-                if(AS in path):
-                        return(True)
-
-        return(False)
-
 class Features(BaseTransform):
 
-        computeRoutes = False
+    computeRoutes = False
+
+    def __init__(self, primingFile, dataFile, params, outFolder, logFiles):
+        
+        BaseTransform.__init__(self, primingFile, dataFile, params, outFolder, logFiles)
+        
+    def transforms(self, index, routes, updates):
+
+        features = {
+            &#34;nb_A&#34; : 0, # Number of announcements
+            &#34;nb_W&#34; : 0, # Number of withdrawals:
+            &#34;nb_implicit_W&#34; : 0,  
+            &#34;nb_dup_A&#34; : 0,
+            &#34;nb_dup_W&#34; : 0,
+            &#34;nb_A_prefix&#34; : 0, # Number of announced prefixes
+            &#34;nb_W_prefix&#34; : 0, # Number of withdrawn prefixes
+            &#34;max_A_prefix&#34; : 0, # Max. announcements per prefix
+            &#34;avg_A_prefix&#34; : 0, # Avg. announcements per prefix
+            &#34;max_A_AS&#34; : 0, # Max. announcements per AS
+            &#34;avg_A_AS&#34; : 0, # Avg. announcements per AS
+            &#34;nb_orign_change&#34; : 0, 
+            &#34;nb_new_A&#34; : 0, # Not stored in RIB
+            &#34;nb_new_A_afterW&#34; : 0, 
+            &#34;max_path_len&#34; : 0,
+            &#34;avg_path_len&#34; : 0,
+            &#34;max_editdist&#34; : 0,
+            &#34;avg_editdist&#34; : 0,
+            &#34;editdist_7&#34; : 0,
+            &#34;editdist_8&#34; : 0,
+            &#34;editdist_9&#34; : 0,
+            &#34;editdist_10&#34; : 0,
+            &#34;editdist_11&#34; : 0,
+            &#34;editdist_12&#34; : 0,
+            &#34;editdist_13&#34; : 0,
+            &#34;editdist_14&#34; : 0,
+            &#34;editdist_15&#34; : 0,
+            &#34;editdist_16&#34; : 0,
+            &#34;editdist_17&#34; : 0,
+            &#34;nb_tolonger&#34; : 0, 
+            &#34;nb_toshorter&#34; : 0,
+            &#34;avg_interarrival&#34; : 0,
+        }
+
+        if(len(updates)&lt;2):
+            return(features)
+
+        c = 0
+
+        prevTime = 0
+
+        A_per_prefix = {}
+        W_per_prefix = {}
+
+        A_per_AS = {}
+
+        path_len = []
+        inter_time = []
+        editDist = []
+
+        for update in updates:    
+
+            if(update[&#34;fields&#34;][&#34;prefix&#34;] not in routes):
+                    routes[update[&#34;fields&#34;][&#34;prefix&#34;]] = {}
+            if(update[&#34;collector&#34;] not in routes[update[&#34;fields&#34;][&#34;prefix&#34;]]):
+                routes[update[&#34;fields&#34;][&#34;prefix&#34;]][update[&#34;collector&#34;]] = {}
+
+            if(update[&#34;type&#34;]==&#39;A&#39;):
+
+                features[&#34;nb_A&#34;] += 1
+
+                Uas_path = update[&#34;fields&#34;][&#39;as-path&#39;]
+
+                path_len.append(len(Uas_path.split(&#34; &#34;)))
+
+                if(update[&#34;fields&#34;][&#34;prefix&#34;] not in A_per_prefix):
+                    A_per_prefix[update[&#34;fields&#34;][&#34;prefix&#34;]] = 0
+
+                A_per_prefix[update[&#34;fields&#34;][&#34;prefix&#34;]] += 1
+
+                origin = Uas_path.split(&#34; &#34;)[-1]
+                if(origin not in A_per_AS):
+                    A_per_AS[origin] = 0
+
+                A_per_AS[origin] += 1
 
 
-        def __init__(self):
-                BaseTransform.__init__(self)
-                self.params[&#34;ASes&#34;] = None
+                if(update[&#34;peer_asn&#34;] not in routes[update[&#34;fields&#34;][&#34;prefix&#34;]][update[&#34;collector&#34;]] or routes[update[&#34;fields&#34;][&#34;prefix&#34;]][update[&#34;collector&#34;]][update[&#34;peer_asn&#34;]]==None):
+                    features[&#34;nb_new_A&#34;] += 1
+                elif(routes[update[&#34;fields&#34;][&#34;prefix&#34;]][update[&#34;collector&#34;]][update[&#34;peer_asn&#34;]]==&#34;w&#34;+str(index)):
+                    features[&#34;nb_new_A_afterW&#34;] += 1
+                elif(routes[update[&#34;fields&#34;][&#34;prefix&#34;]][update[&#34;collector&#34;]][update[&#34;peer_asn&#34;]][0]==&#34;w&#34;):
+                    features[&#34;nb_new_A&#34;] += 1
+                elif(routes[update[&#34;fields&#34;][&#34;prefix&#34;]][update[&#34;collector&#34;]][update[&#34;peer_asn&#34;]]==Uas_path):
+                    features[&#34;nb_dup_A&#34;] += 1
+                else:
+                    features[&#34;nb_implicit_W&#34;] += 1
 
-        def transforms(self, index, routes, updates):
+                    ASlist_prev = routes[update[&#34;fields&#34;][&#34;prefix&#34;]][update[&#34;collector&#34;]][update[&#34;peer_asn&#34;]].split(&#34; &#34;)
+                    ASlist_new = Uas_path.split(&#34; &#34;)
 
-                features = {
-                        &#34;nb_A&#34; : 0, # Number of announcements
-                        &#34;nb_W&#34; : 0, # Number of withdrawals:
-                        &#34;nb_implicit_W&#34; : 0,  
-                        &#34;nb_dup_A&#34; : 0,
-                        &#34;nb_dup_W&#34; : 0,
-                        &#34;nb_A_prefix&#34; : 0, # Number of announced prefixes
-                        &#34;nb_W_prefix&#34; : 0, # Number of withdrawn prefixes
-                        &#34;max_A_prefix&#34; : 0, # Max. announcements per prefix
-                        &#34;avg_A_prefix&#34; : 0, # Avg. announcements per prefix
-                        &#34;max_A_AS&#34; : 0, # Max. announcements per AS
-                        &#34;avg_A_AS&#34; : 0, # Avg. announcements per AS
-                        &#34;nb_orign_change&#34; : 0, 
-                        &#34;nb_new_A&#34; : 0, # Not stored in RIB
-                        &#34;nb_new_A_afterW&#34; : 0, 
-                        &#34;max_path_len&#34; : 0,
-                        &#34;avg_path_len&#34; : 0,
-                        &#34;max_editdist&#34; : 0,
-                        &#34;avg_editdist&#34; : 0,
-                        &#34;editdist_7&#34; : 0,
-                        &#34;editdist_8&#34; : 0,
-                        &#34;editdist_9&#34; : 0,
-                        &#34;editdist_10&#34; : 0,
-                        &#34;editdist_11&#34; : 0,
-                        &#34;editdist_12&#34; : 0,
-                        &#34;editdist_13&#34; : 0,
-                        &#34;editdist_14&#34; : 0,
-                        &#34;editdist_15&#34; : 0,
-                        &#34;editdist_16&#34; : 0,
-                        &#34;editdist_17&#34; : 0,
-                        &#34;nb_tolonger&#34; : 0, 
-                        &#34;nb_toshorter&#34; : 0,
-                        &#34;avg_interarrival&#34; : 0,
-                }
+                    if(ASlist_prev[-1] != ASlist_new[-1]):
+                        features[&#34;nb_orign_change&#34;] += 1
 
+                    if(len(ASlist_new) &gt; len(ASlist_prev)):
+                        features[&#34;nb_tolonger&#34;] += 1
+                    else:
+                        features[&#34;nb_toshorter&#34;] += 1
 
-                if(len(updates)&lt;2):
-                        return(features)
+                    edist = editdistance.eval(ASlist_prev,ASlist_new)
+                    editDist.append(edist)
+                    if(edist &gt;= 7 and edist &lt;= 17):
+                        features[&#34;editdist_&#34;+str(edist)] += 1
 
-                c = 0
+                routes[update[&#34;fields&#34;][&#34;prefix&#34;]][update[&#34;collector&#34;]][update[&#34;peer_asn&#34;]] = Uas_path
 
-                prevTime = 0
+            elif(update[&#34;type&#34;]==&#39;W&#39;):
 
-                A_per_prefix = {}
-                W_per_prefix = {}
+                features[&#34;nb_W&#34;] += 1
 
-                A_per_AS = {}
+                if(update[&#34;fields&#34;][&#34;prefix&#34;] not in W_per_prefix):
+                    W_per_prefix[update[&#34;fields&#34;][&#34;prefix&#34;]] = 0
 
-                path_len = []
-                inter_time = []
-                editDist = []
+                W_per_prefix[update[&#34;fields&#34;][&#34;prefix&#34;]] += 1
 
-                for update in updates:  
+                if(update[&#34;peer_asn&#34;] in routes[update[&#34;fields&#34;][&#34;prefix&#34;]][update[&#34;collector&#34;]] and routes[update[&#34;fields&#34;][&#34;prefix&#34;]][update[&#34;collector&#34;]][update[&#34;peer_asn&#34;]]==&#34;w&#34;+str(index)):
 
-                        if(update[&#34;fields&#34;][&#34;prefix&#34;] not in routes):
-                                        routes[update[&#34;fields&#34;][&#34;prefix&#34;]] = {}
-                        if(update[&#34;collector&#34;] not in routes[update[&#34;fields&#34;][&#34;prefix&#34;]]):
-                                routes[update[&#34;fields&#34;][&#34;prefix&#34;]][update[&#34;collector&#34;]] = {}
+                    features[&#34;nb_dup_W&#34;] += 1
 
+                routes[update[&#34;fields&#34;][&#34;prefix&#34;]][update[&#34;collector&#34;]][update[&#34;peer_asn&#34;]] = &#34;w&#34;+str(index)
 
-                        if(selectedASes(routes, self.params[&#34;ASes&#34;], update)):
+            if(prevTime!=0):
+                iTime = int(update[&#34;time&#34;]) - prevTime
+                if(iTime &gt; 0):
+                    inter_time.append(iTime)
 
+            prevTime = int(update[&#34;time&#34;])
 
-                                if(update[&#34;type&#34;]==&#39;A&#39;):
+        features[&#34;nb_A_prefix&#34;] = len(A_per_prefix)
+        features[&#34;nb_W_prefix&#34;] = len(W_per_prefix)
+        A_per_prefix_values = A_per_prefix.values()
+        if(len(A_per_prefix_values)&gt;1):
+            features[&#34;max_A_prefix&#34;] = max(A_per_prefix_values)
+            features[&#34;avg_A_prefix&#34;] = round(sum(A_per_prefix_values) / len(A_per_prefix_values))
 
-                                        features[&#34;nb_A&#34;] += 1
+        A_per_AS_values = A_per_AS.values()
+        if(len(A_per_AS_values)&gt;1):
+            features[&#34;max_A_AS&#34;] = max(A_per_AS_values)
+            features[&#34;avg_A_AS&#34;] = round(sum(A_per_AS_values) / len(A_per_AS_values))
 
-                                        Uas_path = update[&#34;fields&#34;][&#39;as-path&#39;]
+        if(len(path_len)&gt;1):
+            features[&#34;max_path_len&#34;] =  max(path_len)
+            features[&#34;avg_path_len&#34;] = round(sum(path_len) / len(path_len))
 
-                                        path_len.append(len(Uas_path.split(&#34; &#34;)))
+        if(len(inter_time)&gt;1):
+            features[&#34;avg_interarrival&#34;] = round(sum(inter_time) *1000/ len(inter_time))
 
-                                        if(update[&#34;fields&#34;][&#34;prefix&#34;] not in A_per_prefix):
-                                                A_per_prefix[update[&#34;fields&#34;][&#34;prefix&#34;]] = 0
+        if(len(editDist)&gt;1):
+            features[&#34;max_editdist&#34;] =  max(editDist)
+            features[&#34;avg_editdist&#34;] = round(sum(editDist) / len(editDist))
 
-                                        A_per_prefix[update[&#34;fields&#34;][&#34;prefix&#34;]] += 1
+        return(features)
 
-                                        origin = Uas_path.split(&#34; &#34;)[-1]
-                                        if(origin not in A_per_AS):
-                                                A_per_AS[origin] = 0
-
-                                        A_per_AS[origin] += 1
-
-
-                                        if(update[&#34;peer_asn&#34;] not in routes[update[&#34;fields&#34;][&#34;prefix&#34;]][update[&#34;collector&#34;]] or routes[update[&#34;fields&#34;][&#34;prefix&#34;]][update[&#34;collector&#34;]][update[&#34;peer_asn&#34;]]==None):
-                                                features[&#34;nb_new_A&#34;] += 1
-                                        elif(routes[update[&#34;fields&#34;][&#34;prefix&#34;]][update[&#34;collector&#34;]][update[&#34;peer_asn&#34;]]==&#34;w&#34;+str(index)):
-                                                features[&#34;nb_new_A_afterW&#34;] += 1
-                                        elif(routes[update[&#34;fields&#34;][&#34;prefix&#34;]][update[&#34;collector&#34;]][update[&#34;peer_asn&#34;]][0]==&#34;w&#34;):
-                                                features[&#34;nb_new_A&#34;] += 1
-                                        elif(routes[update[&#34;fields&#34;][&#34;prefix&#34;]][update[&#34;collector&#34;]][update[&#34;peer_asn&#34;]]==Uas_path):
-                                                features[&#34;nb_dup_A&#34;] += 1
-                                        else:
-                                                features[&#34;nb_implicit_W&#34;] += 1
-
-                                                ASlist_prev = routes[update[&#34;fields&#34;][&#34;prefix&#34;]][update[&#34;collector&#34;]][update[&#34;peer_asn&#34;]].split(&#34; &#34;)
-                                                ASlist_new = Uas_path.split(&#34; &#34;)
-
-                                                if(ASlist_prev[-1] != ASlist_new[-1]):
-                                                        features[&#34;nb_orign_change&#34;] += 1
-
-                                                if(len(ASlist_new) &gt; len(ASlist_prev)):
-                                                        features[&#34;nb_tolonger&#34;] += 1
-                                                else:
-                                                        features[&#34;nb_toshorter&#34;] += 1
-
-                                                edist = editdistance.eval(ASlist_prev,ASlist_new)
-                                                editDist.append(edist)
-                                                if(edist &gt;= 7 and edist &lt;= 17):
-                                                        features[&#34;editdist_&#34;+str(edist)] += 1
-
-                                        routes[update[&#34;fields&#34;][&#34;prefix&#34;]][update[&#34;collector&#34;]][update[&#34;peer_asn&#34;]] = Uas_path
-
-                                elif(update[&#34;type&#34;]==&#39;W&#39;):
-
-                                        features[&#34;nb_W&#34;] += 1
-
-                                        if(update[&#34;fields&#34;][&#34;prefix&#34;] not in W_per_prefix):
-                                                W_per_prefix[update[&#34;fields&#34;][&#34;prefix&#34;]] = 0
-
-                                        W_per_prefix[update[&#34;fields&#34;][&#34;prefix&#34;]] += 1
-
-                                        if(update[&#34;peer_asn&#34;] in routes[update[&#34;fields&#34;][&#34;prefix&#34;]][update[&#34;collector&#34;]] and routes[update[&#34;fields&#34;][&#34;prefix&#34;]][update[&#34;collector&#34;]][update[&#34;peer_asn&#34;]]==&#34;w&#34;+str(index)):
-                                                
-                                                features[&#34;nb_dup_W&#34;] += 1
-
-                                        routes[update[&#34;fields&#34;][&#34;prefix&#34;]][update[&#34;collector&#34;]][update[&#34;peer_asn&#34;]] = &#34;w&#34;+str(index)
-
-                                if(prevTime!=0):
-                                        iTime = int(update[&#34;time&#34;]) - prevTime
-                                        if(iTime &gt; 0):
-                                                inter_time.append(iTime)
-
-                                prevTime = int(update[&#34;time&#34;])
-
-                features[&#34;nb_A_prefix&#34;] = len(A_per_prefix)
-                features[&#34;nb_W_prefix&#34;] = len(W_per_prefix)
-                A_per_prefix_values = A_per_prefix.values()
-                if(len(A_per_prefix_values)&gt;1):
-                        features[&#34;max_A_prefix&#34;] = max(A_per_prefix_values)
-                        features[&#34;avg_A_prefix&#34;] = round(sum(A_per_prefix_values) / len(A_per_prefix_values))
-
-                A_per_AS_values = A_per_AS.values()
-                if(len(A_per_AS_values)&gt;1):
-                        features[&#34;max_A_AS&#34;] = max(A_per_AS_values)
-                        features[&#34;avg_A_AS&#34;] = round(sum(A_per_AS_values) / len(A_per_AS_values))
-
-                if(len(path_len)&gt;1):
-                        features[&#34;max_path_len&#34;] =  max(path_len)
-                        features[&#34;avg_path_len&#34;] = round(sum(path_len) / len(path_len))
-
-                if(len(inter_time)&gt;1):
-                        features[&#34;avg_interarrival&#34;] = round(sum(inter_time) *1000/ len(inter_time))
-
-                if(len(editDist)&gt;1):
-                        features[&#34;max_editdist&#34;] =  max(editDist)
-                        features[&#34;avg_editdist&#34;] = round(sum(editDist) / len(editDist))
-
-                return(features)
-
-        def postProcess(self, transformedData):
-                transformedData.pop(0)
-                return(transformedData)</code></pre>
+    def postProcess(self, transformedData):
+        transformedData.pop(0)
+        return(transformedData)</code></pre>
 </details>
 </section>
 <section>
@@ -230,10 +203,13 @@ class Features(BaseTransform):
 <section>
 </section>
 <section>
-<h2 class="section-title" id="header-functions">Functions</h2>
+</section>
+<section>
+<h2 class="section-title" id="header-classes">Classes</h2>
 <dl>
-<dt id="BML.transform.features.selectedASes"><code class="name flex">
-<span>def <span class="ident">selectedASes</span></span>(<span>routes, ASes, update)</span>
+<dt id="BML.transform.features.Features"><code class="flex name class">
+<span>class <span class="ident">Features</span></span>
+<span>(</span><span>primingFile, dataFile, params, outFolder, logFiles)</span>
 </code></dt>
 <dd>
 <div class="desc"></div>
@@ -241,236 +217,178 @@ class Features(BaseTransform):
 <summary>
 <span>Expand source code</span>
 </summary>
-<pre><code class="python">def selectedASes(routes, ASes, update):
-
-        if(ASes is None):
-                return(True)
-
-        path = []
-
-        if(update[&#34;type&#34;]==&#39;A&#39;):
-
-                path = update[&#34;fields&#34;][&#39;as-path&#39;].split(&#34; &#34;)
-
-        elif(update[&#34;type&#34;]==&#39;W&#39;):
-                if(update[&#34;peer_asn&#34;] in routes[update[&#34;fields&#34;][&#34;prefix&#34;]][update[&#34;collector&#34;]] and not routes[update[&#34;fields&#34;][&#34;prefix&#34;]][update[&#34;collector&#34;]][update[&#34;peer_asn&#34;]] is None):
-                        path = routes[update[&#34;fields&#34;][&#34;prefix&#34;]][update[&#34;collector&#34;]][update[&#34;peer_asn&#34;]].split(&#34; &#34;)
-
-        for AS in ASes:
-                if(AS in path):
-                        return(True)
-
-        return(False)</code></pre>
-</details>
-</dd>
-</dl>
-</section>
-<section>
-<h2 class="section-title" id="header-classes">Classes</h2>
-<dl>
-<dt id="BML.transform.features.Features"><code class="flex name class">
-<span>class <span class="ident">Features</span></span>
-</code></dt>
-<dd>
-<div class="desc"><p>A class that represents a thread of control.</p>
-<p>This class can be safely subclassed in a limited fashion. There are two ways
-to specify the activity: by passing a callable object to the constructor, or
-by overriding the run() method in a subclass.</p>
-<p>This constructor should always be called with keyword arguments. Arguments are:</p>
-<p><em>group</em> should be None; reserved for future extension when a ThreadGroup
-class is implemented.</p>
-<p><em>target</em> is the callable object to be invoked by the run()
-method. Defaults to None, meaning nothing is called.</p>
-<p><em>name</em> is the thread name. By default, a unique name is constructed of
-the form "Thread-N" where N is a small decimal number.</p>
-<p><em>args</em> is the argument tuple for the target invocation. Defaults to ().</p>
-<p><em>kwargs</em> is a dictionary of keyword arguments for the target
-invocation. Defaults to {}.</p>
-<p>If a subclass overrides the constructor, it must make sure to invoke
-the base class constructor (Thread.<strong>init</strong>()) before doing anything
-else to the thread.</p></div>
-<details class="source">
-<summary>
-<span>Expand source code</span>
-</summary>
 <pre><code class="python">class Features(BaseTransform):
 
-        computeRoutes = False
+    computeRoutes = False
+
+    def __init__(self, primingFile, dataFile, params, outFolder, logFiles):
+        
+        BaseTransform.__init__(self, primingFile, dataFile, params, outFolder, logFiles)
+        
+    def transforms(self, index, routes, updates):
+
+        features = {
+            &#34;nb_A&#34; : 0, # Number of announcements
+            &#34;nb_W&#34; : 0, # Number of withdrawals:
+            &#34;nb_implicit_W&#34; : 0,  
+            &#34;nb_dup_A&#34; : 0,
+            &#34;nb_dup_W&#34; : 0,
+            &#34;nb_A_prefix&#34; : 0, # Number of announced prefixes
+            &#34;nb_W_prefix&#34; : 0, # Number of withdrawn prefixes
+            &#34;max_A_prefix&#34; : 0, # Max. announcements per prefix
+            &#34;avg_A_prefix&#34; : 0, # Avg. announcements per prefix
+            &#34;max_A_AS&#34; : 0, # Max. announcements per AS
+            &#34;avg_A_AS&#34; : 0, # Avg. announcements per AS
+            &#34;nb_orign_change&#34; : 0, 
+            &#34;nb_new_A&#34; : 0, # Not stored in RIB
+            &#34;nb_new_A_afterW&#34; : 0, 
+            &#34;max_path_len&#34; : 0,
+            &#34;avg_path_len&#34; : 0,
+            &#34;max_editdist&#34; : 0,
+            &#34;avg_editdist&#34; : 0,
+            &#34;editdist_7&#34; : 0,
+            &#34;editdist_8&#34; : 0,
+            &#34;editdist_9&#34; : 0,
+            &#34;editdist_10&#34; : 0,
+            &#34;editdist_11&#34; : 0,
+            &#34;editdist_12&#34; : 0,
+            &#34;editdist_13&#34; : 0,
+            &#34;editdist_14&#34; : 0,
+            &#34;editdist_15&#34; : 0,
+            &#34;editdist_16&#34; : 0,
+            &#34;editdist_17&#34; : 0,
+            &#34;nb_tolonger&#34; : 0, 
+            &#34;nb_toshorter&#34; : 0,
+            &#34;avg_interarrival&#34; : 0,
+        }
+
+        if(len(updates)&lt;2):
+            return(features)
+
+        c = 0
+
+        prevTime = 0
+
+        A_per_prefix = {}
+        W_per_prefix = {}
+
+        A_per_AS = {}
+
+        path_len = []
+        inter_time = []
+        editDist = []
+
+        for update in updates:    
+
+            if(update[&#34;fields&#34;][&#34;prefix&#34;] not in routes):
+                    routes[update[&#34;fields&#34;][&#34;prefix&#34;]] = {}
+            if(update[&#34;collector&#34;] not in routes[update[&#34;fields&#34;][&#34;prefix&#34;]]):
+                routes[update[&#34;fields&#34;][&#34;prefix&#34;]][update[&#34;collector&#34;]] = {}
+
+            if(update[&#34;type&#34;]==&#39;A&#39;):
+
+                features[&#34;nb_A&#34;] += 1
+
+                Uas_path = update[&#34;fields&#34;][&#39;as-path&#39;]
+
+                path_len.append(len(Uas_path.split(&#34; &#34;)))
+
+                if(update[&#34;fields&#34;][&#34;prefix&#34;] not in A_per_prefix):
+                    A_per_prefix[update[&#34;fields&#34;][&#34;prefix&#34;]] = 0
+
+                A_per_prefix[update[&#34;fields&#34;][&#34;prefix&#34;]] += 1
+
+                origin = Uas_path.split(&#34; &#34;)[-1]
+                if(origin not in A_per_AS):
+                    A_per_AS[origin] = 0
+
+                A_per_AS[origin] += 1
 
 
-        def __init__(self):
-                BaseTransform.__init__(self)
-                self.params[&#34;ASes&#34;] = None
+                if(update[&#34;peer_asn&#34;] not in routes[update[&#34;fields&#34;][&#34;prefix&#34;]][update[&#34;collector&#34;]] or routes[update[&#34;fields&#34;][&#34;prefix&#34;]][update[&#34;collector&#34;]][update[&#34;peer_asn&#34;]]==None):
+                    features[&#34;nb_new_A&#34;] += 1
+                elif(routes[update[&#34;fields&#34;][&#34;prefix&#34;]][update[&#34;collector&#34;]][update[&#34;peer_asn&#34;]]==&#34;w&#34;+str(index)):
+                    features[&#34;nb_new_A_afterW&#34;] += 1
+                elif(routes[update[&#34;fields&#34;][&#34;prefix&#34;]][update[&#34;collector&#34;]][update[&#34;peer_asn&#34;]][0]==&#34;w&#34;):
+                    features[&#34;nb_new_A&#34;] += 1
+                elif(routes[update[&#34;fields&#34;][&#34;prefix&#34;]][update[&#34;collector&#34;]][update[&#34;peer_asn&#34;]]==Uas_path):
+                    features[&#34;nb_dup_A&#34;] += 1
+                else:
+                    features[&#34;nb_implicit_W&#34;] += 1
 
-        def transforms(self, index, routes, updates):
+                    ASlist_prev = routes[update[&#34;fields&#34;][&#34;prefix&#34;]][update[&#34;collector&#34;]][update[&#34;peer_asn&#34;]].split(&#34; &#34;)
+                    ASlist_new = Uas_path.split(&#34; &#34;)
 
-                features = {
-                        &#34;nb_A&#34; : 0, # Number of announcements
-                        &#34;nb_W&#34; : 0, # Number of withdrawals:
-                        &#34;nb_implicit_W&#34; : 0,  
-                        &#34;nb_dup_A&#34; : 0,
-                        &#34;nb_dup_W&#34; : 0,
-                        &#34;nb_A_prefix&#34; : 0, # Number of announced prefixes
-                        &#34;nb_W_prefix&#34; : 0, # Number of withdrawn prefixes
-                        &#34;max_A_prefix&#34; : 0, # Max. announcements per prefix
-                        &#34;avg_A_prefix&#34; : 0, # Avg. announcements per prefix
-                        &#34;max_A_AS&#34; : 0, # Max. announcements per AS
-                        &#34;avg_A_AS&#34; : 0, # Avg. announcements per AS
-                        &#34;nb_orign_change&#34; : 0, 
-                        &#34;nb_new_A&#34; : 0, # Not stored in RIB
-                        &#34;nb_new_A_afterW&#34; : 0, 
-                        &#34;max_path_len&#34; : 0,
-                        &#34;avg_path_len&#34; : 0,
-                        &#34;max_editdist&#34; : 0,
-                        &#34;avg_editdist&#34; : 0,
-                        &#34;editdist_7&#34; : 0,
-                        &#34;editdist_8&#34; : 0,
-                        &#34;editdist_9&#34; : 0,
-                        &#34;editdist_10&#34; : 0,
-                        &#34;editdist_11&#34; : 0,
-                        &#34;editdist_12&#34; : 0,
-                        &#34;editdist_13&#34; : 0,
-                        &#34;editdist_14&#34; : 0,
-                        &#34;editdist_15&#34; : 0,
-                        &#34;editdist_16&#34; : 0,
-                        &#34;editdist_17&#34; : 0,
-                        &#34;nb_tolonger&#34; : 0, 
-                        &#34;nb_toshorter&#34; : 0,
-                        &#34;avg_interarrival&#34; : 0,
-                }
+                    if(ASlist_prev[-1] != ASlist_new[-1]):
+                        features[&#34;nb_orign_change&#34;] += 1
 
+                    if(len(ASlist_new) &gt; len(ASlist_prev)):
+                        features[&#34;nb_tolonger&#34;] += 1
+                    else:
+                        features[&#34;nb_toshorter&#34;] += 1
 
-                if(len(updates)&lt;2):
-                        return(features)
+                    edist = editdistance.eval(ASlist_prev,ASlist_new)
+                    editDist.append(edist)
+                    if(edist &gt;= 7 and edist &lt;= 17):
+                        features[&#34;editdist_&#34;+str(edist)] += 1
 
-                c = 0
+                routes[update[&#34;fields&#34;][&#34;prefix&#34;]][update[&#34;collector&#34;]][update[&#34;peer_asn&#34;]] = Uas_path
 
-                prevTime = 0
+            elif(update[&#34;type&#34;]==&#39;W&#39;):
 
-                A_per_prefix = {}
-                W_per_prefix = {}
+                features[&#34;nb_W&#34;] += 1
 
-                A_per_AS = {}
+                if(update[&#34;fields&#34;][&#34;prefix&#34;] not in W_per_prefix):
+                    W_per_prefix[update[&#34;fields&#34;][&#34;prefix&#34;]] = 0
 
-                path_len = []
-                inter_time = []
-                editDist = []
+                W_per_prefix[update[&#34;fields&#34;][&#34;prefix&#34;]] += 1
 
-                for update in updates:  
+                if(update[&#34;peer_asn&#34;] in routes[update[&#34;fields&#34;][&#34;prefix&#34;]][update[&#34;collector&#34;]] and routes[update[&#34;fields&#34;][&#34;prefix&#34;]][update[&#34;collector&#34;]][update[&#34;peer_asn&#34;]]==&#34;w&#34;+str(index)):
 
-                        if(update[&#34;fields&#34;][&#34;prefix&#34;] not in routes):
-                                        routes[update[&#34;fields&#34;][&#34;prefix&#34;]] = {}
-                        if(update[&#34;collector&#34;] not in routes[update[&#34;fields&#34;][&#34;prefix&#34;]]):
-                                routes[update[&#34;fields&#34;][&#34;prefix&#34;]][update[&#34;collector&#34;]] = {}
+                    features[&#34;nb_dup_W&#34;] += 1
 
+                routes[update[&#34;fields&#34;][&#34;prefix&#34;]][update[&#34;collector&#34;]][update[&#34;peer_asn&#34;]] = &#34;w&#34;+str(index)
 
-                        if(selectedASes(routes, self.params[&#34;ASes&#34;], update)):
+            if(prevTime!=0):
+                iTime = int(update[&#34;time&#34;]) - prevTime
+                if(iTime &gt; 0):
+                    inter_time.append(iTime)
 
+            prevTime = int(update[&#34;time&#34;])
 
-                                if(update[&#34;type&#34;]==&#39;A&#39;):
+        features[&#34;nb_A_prefix&#34;] = len(A_per_prefix)
+        features[&#34;nb_W_prefix&#34;] = len(W_per_prefix)
+        A_per_prefix_values = A_per_prefix.values()
+        if(len(A_per_prefix_values)&gt;1):
+            features[&#34;max_A_prefix&#34;] = max(A_per_prefix_values)
+            features[&#34;avg_A_prefix&#34;] = round(sum(A_per_prefix_values) / len(A_per_prefix_values))
 
-                                        features[&#34;nb_A&#34;] += 1
+        A_per_AS_values = A_per_AS.values()
+        if(len(A_per_AS_values)&gt;1):
+            features[&#34;max_A_AS&#34;] = max(A_per_AS_values)
+            features[&#34;avg_A_AS&#34;] = round(sum(A_per_AS_values) / len(A_per_AS_values))
 
-                                        Uas_path = update[&#34;fields&#34;][&#39;as-path&#39;]
+        if(len(path_len)&gt;1):
+            features[&#34;max_path_len&#34;] =  max(path_len)
+            features[&#34;avg_path_len&#34;] = round(sum(path_len) / len(path_len))
 
-                                        path_len.append(len(Uas_path.split(&#34; &#34;)))
+        if(len(inter_time)&gt;1):
+            features[&#34;avg_interarrival&#34;] = round(sum(inter_time) *1000/ len(inter_time))
 
-                                        if(update[&#34;fields&#34;][&#34;prefix&#34;] not in A_per_prefix):
-                                                A_per_prefix[update[&#34;fields&#34;][&#34;prefix&#34;]] = 0
+        if(len(editDist)&gt;1):
+            features[&#34;max_editdist&#34;] =  max(editDist)
+            features[&#34;avg_editdist&#34;] = round(sum(editDist) / len(editDist))
 
-                                        A_per_prefix[update[&#34;fields&#34;][&#34;prefix&#34;]] += 1
+        return(features)
 
-                                        origin = Uas_path.split(&#34; &#34;)[-1]
-                                        if(origin not in A_per_AS):
-                                                A_per_AS[origin] = 0
-
-                                        A_per_AS[origin] += 1
-
-
-                                        if(update[&#34;peer_asn&#34;] not in routes[update[&#34;fields&#34;][&#34;prefix&#34;]][update[&#34;collector&#34;]] or routes[update[&#34;fields&#34;][&#34;prefix&#34;]][update[&#34;collector&#34;]][update[&#34;peer_asn&#34;]]==None):
-                                                features[&#34;nb_new_A&#34;] += 1
-                                        elif(routes[update[&#34;fields&#34;][&#34;prefix&#34;]][update[&#34;collector&#34;]][update[&#34;peer_asn&#34;]]==&#34;w&#34;+str(index)):
-                                                features[&#34;nb_new_A_afterW&#34;] += 1
-                                        elif(routes[update[&#34;fields&#34;][&#34;prefix&#34;]][update[&#34;collector&#34;]][update[&#34;peer_asn&#34;]][0]==&#34;w&#34;):
-                                                features[&#34;nb_new_A&#34;] += 1
-                                        elif(routes[update[&#34;fields&#34;][&#34;prefix&#34;]][update[&#34;collector&#34;]][update[&#34;peer_asn&#34;]]==Uas_path):
-                                                features[&#34;nb_dup_A&#34;] += 1
-                                        else:
-                                                features[&#34;nb_implicit_W&#34;] += 1
-
-                                                ASlist_prev = routes[update[&#34;fields&#34;][&#34;prefix&#34;]][update[&#34;collector&#34;]][update[&#34;peer_asn&#34;]].split(&#34; &#34;)
-                                                ASlist_new = Uas_path.split(&#34; &#34;)
-
-                                                if(ASlist_prev[-1] != ASlist_new[-1]):
-                                                        features[&#34;nb_orign_change&#34;] += 1
-
-                                                if(len(ASlist_new) &gt; len(ASlist_prev)):
-                                                        features[&#34;nb_tolonger&#34;] += 1
-                                                else:
-                                                        features[&#34;nb_toshorter&#34;] += 1
-
-                                                edist = editdistance.eval(ASlist_prev,ASlist_new)
-                                                editDist.append(edist)
-                                                if(edist &gt;= 7 and edist &lt;= 17):
-                                                        features[&#34;editdist_&#34;+str(edist)] += 1
-
-                                        routes[update[&#34;fields&#34;][&#34;prefix&#34;]][update[&#34;collector&#34;]][update[&#34;peer_asn&#34;]] = Uas_path
-
-                                elif(update[&#34;type&#34;]==&#39;W&#39;):
-
-                                        features[&#34;nb_W&#34;] += 1
-
-                                        if(update[&#34;fields&#34;][&#34;prefix&#34;] not in W_per_prefix):
-                                                W_per_prefix[update[&#34;fields&#34;][&#34;prefix&#34;]] = 0
-
-                                        W_per_prefix[update[&#34;fields&#34;][&#34;prefix&#34;]] += 1
-
-                                        if(update[&#34;peer_asn&#34;] in routes[update[&#34;fields&#34;][&#34;prefix&#34;]][update[&#34;collector&#34;]] and routes[update[&#34;fields&#34;][&#34;prefix&#34;]][update[&#34;collector&#34;]][update[&#34;peer_asn&#34;]]==&#34;w&#34;+str(index)):
-                                                
-                                                features[&#34;nb_dup_W&#34;] += 1
-
-                                        routes[update[&#34;fields&#34;][&#34;prefix&#34;]][update[&#34;collector&#34;]][update[&#34;peer_asn&#34;]] = &#34;w&#34;+str(index)
-
-                                if(prevTime!=0):
-                                        iTime = int(update[&#34;time&#34;]) - prevTime
-                                        if(iTime &gt; 0):
-                                                inter_time.append(iTime)
-
-                                prevTime = int(update[&#34;time&#34;])
-
-                features[&#34;nb_A_prefix&#34;] = len(A_per_prefix)
-                features[&#34;nb_W_prefix&#34;] = len(W_per_prefix)
-                A_per_prefix_values = A_per_prefix.values()
-                if(len(A_per_prefix_values)&gt;1):
-                        features[&#34;max_A_prefix&#34;] = max(A_per_prefix_values)
-                        features[&#34;avg_A_prefix&#34;] = round(sum(A_per_prefix_values) / len(A_per_prefix_values))
-
-                A_per_AS_values = A_per_AS.values()
-                if(len(A_per_AS_values)&gt;1):
-                        features[&#34;max_A_AS&#34;] = max(A_per_AS_values)
-                        features[&#34;avg_A_AS&#34;] = round(sum(A_per_AS_values) / len(A_per_AS_values))
-
-                if(len(path_len)&gt;1):
-                        features[&#34;max_path_len&#34;] =  max(path_len)
-                        features[&#34;avg_path_len&#34;] = round(sum(path_len) / len(path_len))
-
-                if(len(inter_time)&gt;1):
-                        features[&#34;avg_interarrival&#34;] = round(sum(inter_time) *1000/ len(inter_time))
-
-                if(len(editDist)&gt;1):
-                        features[&#34;max_editdist&#34;] =  max(editDist)
-                        features[&#34;avg_editdist&#34;] = round(sum(editDist) / len(editDist))
-
-                return(features)
-
-        def postProcess(self, transformedData):
-                transformedData.pop(0)
-                return(transformedData)</code></pre>
+    def postProcess(self, transformedData):
+        transformedData.pop(0)
+        return(transformedData)</code></pre>
 </details>
 <h3>Ancestors</h3>
 <ul class="hlist">
 <li><a title="BML.transform.base_transform.BaseTransform" href="base_transform.html#BML.transform.base_transform.BaseTransform">BaseTransform</a></li>
-<li>threading.Thread</li>
+<li><a title="BML.utils.bml_process.BmlProcess" href="../utils/bml_process.html#BML.utils.bml_process.BmlProcess">BmlProcess</a></li>
 </ul>
 <h3>Class variables</h3>
 <dl>
@@ -491,8 +409,8 @@ else to the thread.</p></div>
 <span>Expand source code</span>
 </summary>
 <pre><code class="python">def postProcess(self, transformedData):
-        transformedData.pop(0)
-        return(transformedData)</code></pre>
+    transformedData.pop(0)
+    return(transformedData)</code></pre>
 </details>
 </dd>
 <dt id="BML.transform.features.Features.transforms"><code class="name flex">
@@ -506,181 +424,168 @@ else to the thread.</p></div>
 </summary>
 <pre><code class="python">def transforms(self, index, routes, updates):
 
-        features = {
-                &#34;nb_A&#34; : 0, # Number of announcements
-                &#34;nb_W&#34; : 0, # Number of withdrawals:
-                &#34;nb_implicit_W&#34; : 0,  
-                &#34;nb_dup_A&#34; : 0,
-                &#34;nb_dup_W&#34; : 0,
-                &#34;nb_A_prefix&#34; : 0, # Number of announced prefixes
-                &#34;nb_W_prefix&#34; : 0, # Number of withdrawn prefixes
-                &#34;max_A_prefix&#34; : 0, # Max. announcements per prefix
-                &#34;avg_A_prefix&#34; : 0, # Avg. announcements per prefix
-                &#34;max_A_AS&#34; : 0, # Max. announcements per AS
-                &#34;avg_A_AS&#34; : 0, # Avg. announcements per AS
-                &#34;nb_orign_change&#34; : 0, 
-                &#34;nb_new_A&#34; : 0, # Not stored in RIB
-                &#34;nb_new_A_afterW&#34; : 0, 
-                &#34;max_path_len&#34; : 0,
-                &#34;avg_path_len&#34; : 0,
-                &#34;max_editdist&#34; : 0,
-                &#34;avg_editdist&#34; : 0,
-                &#34;editdist_7&#34; : 0,
-                &#34;editdist_8&#34; : 0,
-                &#34;editdist_9&#34; : 0,
-                &#34;editdist_10&#34; : 0,
-                &#34;editdist_11&#34; : 0,
-                &#34;editdist_12&#34; : 0,
-                &#34;editdist_13&#34; : 0,
-                &#34;editdist_14&#34; : 0,
-                &#34;editdist_15&#34; : 0,
-                &#34;editdist_16&#34; : 0,
-                &#34;editdist_17&#34; : 0,
-                &#34;nb_tolonger&#34; : 0, 
-                &#34;nb_toshorter&#34; : 0,
-                &#34;avg_interarrival&#34; : 0,
-        }
+    features = {
+        &#34;nb_A&#34; : 0, # Number of announcements
+        &#34;nb_W&#34; : 0, # Number of withdrawals:
+        &#34;nb_implicit_W&#34; : 0,  
+        &#34;nb_dup_A&#34; : 0,
+        &#34;nb_dup_W&#34; : 0,
+        &#34;nb_A_prefix&#34; : 0, # Number of announced prefixes
+        &#34;nb_W_prefix&#34; : 0, # Number of withdrawn prefixes
+        &#34;max_A_prefix&#34; : 0, # Max. announcements per prefix
+        &#34;avg_A_prefix&#34; : 0, # Avg. announcements per prefix
+        &#34;max_A_AS&#34; : 0, # Max. announcements per AS
+        &#34;avg_A_AS&#34; : 0, # Avg. announcements per AS
+        &#34;nb_orign_change&#34; : 0, 
+        &#34;nb_new_A&#34; : 0, # Not stored in RIB
+        &#34;nb_new_A_afterW&#34; : 0, 
+        &#34;max_path_len&#34; : 0,
+        &#34;avg_path_len&#34; : 0,
+        &#34;max_editdist&#34; : 0,
+        &#34;avg_editdist&#34; : 0,
+        &#34;editdist_7&#34; : 0,
+        &#34;editdist_8&#34; : 0,
+        &#34;editdist_9&#34; : 0,
+        &#34;editdist_10&#34; : 0,
+        &#34;editdist_11&#34; : 0,
+        &#34;editdist_12&#34; : 0,
+        &#34;editdist_13&#34; : 0,
+        &#34;editdist_14&#34; : 0,
+        &#34;editdist_15&#34; : 0,
+        &#34;editdist_16&#34; : 0,
+        &#34;editdist_17&#34; : 0,
+        &#34;nb_tolonger&#34; : 0, 
+        &#34;nb_toshorter&#34; : 0,
+        &#34;avg_interarrival&#34; : 0,
+    }
+
+    if(len(updates)&lt;2):
+        return(features)
+
+    c = 0
+
+    prevTime = 0
+
+    A_per_prefix = {}
+    W_per_prefix = {}
+
+    A_per_AS = {}
+
+    path_len = []
+    inter_time = []
+    editDist = []
+
+    for update in updates:    
+
+        if(update[&#34;fields&#34;][&#34;prefix&#34;] not in routes):
+                routes[update[&#34;fields&#34;][&#34;prefix&#34;]] = {}
+        if(update[&#34;collector&#34;] not in routes[update[&#34;fields&#34;][&#34;prefix&#34;]]):
+            routes[update[&#34;fields&#34;][&#34;prefix&#34;]][update[&#34;collector&#34;]] = {}
+
+        if(update[&#34;type&#34;]==&#39;A&#39;):
+
+            features[&#34;nb_A&#34;] += 1
+
+            Uas_path = update[&#34;fields&#34;][&#39;as-path&#39;]
+
+            path_len.append(len(Uas_path.split(&#34; &#34;)))
+
+            if(update[&#34;fields&#34;][&#34;prefix&#34;] not in A_per_prefix):
+                A_per_prefix[update[&#34;fields&#34;][&#34;prefix&#34;]] = 0
+
+            A_per_prefix[update[&#34;fields&#34;][&#34;prefix&#34;]] += 1
+
+            origin = Uas_path.split(&#34; &#34;)[-1]
+            if(origin not in A_per_AS):
+                A_per_AS[origin] = 0
+
+            A_per_AS[origin] += 1
 
 
-        if(len(updates)&lt;2):
-                return(features)
+            if(update[&#34;peer_asn&#34;] not in routes[update[&#34;fields&#34;][&#34;prefix&#34;]][update[&#34;collector&#34;]] or routes[update[&#34;fields&#34;][&#34;prefix&#34;]][update[&#34;collector&#34;]][update[&#34;peer_asn&#34;]]==None):
+                features[&#34;nb_new_A&#34;] += 1
+            elif(routes[update[&#34;fields&#34;][&#34;prefix&#34;]][update[&#34;collector&#34;]][update[&#34;peer_asn&#34;]]==&#34;w&#34;+str(index)):
+                features[&#34;nb_new_A_afterW&#34;] += 1
+            elif(routes[update[&#34;fields&#34;][&#34;prefix&#34;]][update[&#34;collector&#34;]][update[&#34;peer_asn&#34;]][0]==&#34;w&#34;):
+                features[&#34;nb_new_A&#34;] += 1
+            elif(routes[update[&#34;fields&#34;][&#34;prefix&#34;]][update[&#34;collector&#34;]][update[&#34;peer_asn&#34;]]==Uas_path):
+                features[&#34;nb_dup_A&#34;] += 1
+            else:
+                features[&#34;nb_implicit_W&#34;] += 1
 
-        c = 0
+                ASlist_prev = routes[update[&#34;fields&#34;][&#34;prefix&#34;]][update[&#34;collector&#34;]][update[&#34;peer_asn&#34;]].split(&#34; &#34;)
+                ASlist_new = Uas_path.split(&#34; &#34;)
 
-        prevTime = 0
+                if(ASlist_prev[-1] != ASlist_new[-1]):
+                    features[&#34;nb_orign_change&#34;] += 1
 
-        A_per_prefix = {}
-        W_per_prefix = {}
+                if(len(ASlist_new) &gt; len(ASlist_prev)):
+                    features[&#34;nb_tolonger&#34;] += 1
+                else:
+                    features[&#34;nb_toshorter&#34;] += 1
 
-        A_per_AS = {}
+                edist = editdistance.eval(ASlist_prev,ASlist_new)
+                editDist.append(edist)
+                if(edist &gt;= 7 and edist &lt;= 17):
+                    features[&#34;editdist_&#34;+str(edist)] += 1
 
-        path_len = []
-        inter_time = []
-        editDist = []
+            routes[update[&#34;fields&#34;][&#34;prefix&#34;]][update[&#34;collector&#34;]][update[&#34;peer_asn&#34;]] = Uas_path
 
-        for update in updates:  
+        elif(update[&#34;type&#34;]==&#39;W&#39;):
 
-                if(update[&#34;fields&#34;][&#34;prefix&#34;] not in routes):
-                                routes[update[&#34;fields&#34;][&#34;prefix&#34;]] = {}
-                if(update[&#34;collector&#34;] not in routes[update[&#34;fields&#34;][&#34;prefix&#34;]]):
-                        routes[update[&#34;fields&#34;][&#34;prefix&#34;]][update[&#34;collector&#34;]] = {}
+            features[&#34;nb_W&#34;] += 1
 
+            if(update[&#34;fields&#34;][&#34;prefix&#34;] not in W_per_prefix):
+                W_per_prefix[update[&#34;fields&#34;][&#34;prefix&#34;]] = 0
 
-                if(selectedASes(routes, self.params[&#34;ASes&#34;], update)):
+            W_per_prefix[update[&#34;fields&#34;][&#34;prefix&#34;]] += 1
 
+            if(update[&#34;peer_asn&#34;] in routes[update[&#34;fields&#34;][&#34;prefix&#34;]][update[&#34;collector&#34;]] and routes[update[&#34;fields&#34;][&#34;prefix&#34;]][update[&#34;collector&#34;]][update[&#34;peer_asn&#34;]]==&#34;w&#34;+str(index)):
 
-                        if(update[&#34;type&#34;]==&#39;A&#39;):
+                features[&#34;nb_dup_W&#34;] += 1
 
-                                features[&#34;nb_A&#34;] += 1
+            routes[update[&#34;fields&#34;][&#34;prefix&#34;]][update[&#34;collector&#34;]][update[&#34;peer_asn&#34;]] = &#34;w&#34;+str(index)
 
-                                Uas_path = update[&#34;fields&#34;][&#39;as-path&#39;]
+        if(prevTime!=0):
+            iTime = int(update[&#34;time&#34;]) - prevTime
+            if(iTime &gt; 0):
+                inter_time.append(iTime)
 
-                                path_len.append(len(Uas_path.split(&#34; &#34;)))
+        prevTime = int(update[&#34;time&#34;])
 
-                                if(update[&#34;fields&#34;][&#34;prefix&#34;] not in A_per_prefix):
-                                        A_per_prefix[update[&#34;fields&#34;][&#34;prefix&#34;]] = 0
+    features[&#34;nb_A_prefix&#34;] = len(A_per_prefix)
+    features[&#34;nb_W_prefix&#34;] = len(W_per_prefix)
+    A_per_prefix_values = A_per_prefix.values()
+    if(len(A_per_prefix_values)&gt;1):
+        features[&#34;max_A_prefix&#34;] = max(A_per_prefix_values)
+        features[&#34;avg_A_prefix&#34;] = round(sum(A_per_prefix_values) / len(A_per_prefix_values))
 
-                                A_per_prefix[update[&#34;fields&#34;][&#34;prefix&#34;]] += 1
+    A_per_AS_values = A_per_AS.values()
+    if(len(A_per_AS_values)&gt;1):
+        features[&#34;max_A_AS&#34;] = max(A_per_AS_values)
+        features[&#34;avg_A_AS&#34;] = round(sum(A_per_AS_values) / len(A_per_AS_values))
 
-                                origin = Uas_path.split(&#34; &#34;)[-1]
-                                if(origin not in A_per_AS):
-                                        A_per_AS[origin] = 0
+    if(len(path_len)&gt;1):
+        features[&#34;max_path_len&#34;] =  max(path_len)
+        features[&#34;avg_path_len&#34;] = round(sum(path_len) / len(path_len))
 
-                                A_per_AS[origin] += 1
+    if(len(inter_time)&gt;1):
+        features[&#34;avg_interarrival&#34;] = round(sum(inter_time) *1000/ len(inter_time))
 
+    if(len(editDist)&gt;1):
+        features[&#34;max_editdist&#34;] =  max(editDist)
+        features[&#34;avg_editdist&#34;] = round(sum(editDist) / len(editDist))
 
-                                if(update[&#34;peer_asn&#34;] not in routes[update[&#34;fields&#34;][&#34;prefix&#34;]][update[&#34;collector&#34;]] or routes[update[&#34;fields&#34;][&#34;prefix&#34;]][update[&#34;collector&#34;]][update[&#34;peer_asn&#34;]]==None):
-                                        features[&#34;nb_new_A&#34;] += 1
-                                elif(routes[update[&#34;fields&#34;][&#34;prefix&#34;]][update[&#34;collector&#34;]][update[&#34;peer_asn&#34;]]==&#34;w&#34;+str(index)):
-                                        features[&#34;nb_new_A_afterW&#34;] += 1
-                                elif(routes[update[&#34;fields&#34;][&#34;prefix&#34;]][update[&#34;collector&#34;]][update[&#34;peer_asn&#34;]][0]==&#34;w&#34;):
-                                        features[&#34;nb_new_A&#34;] += 1
-                                elif(routes[update[&#34;fields&#34;][&#34;prefix&#34;]][update[&#34;collector&#34;]][update[&#34;peer_asn&#34;]]==Uas_path):
-                                        features[&#34;nb_dup_A&#34;] += 1
-                                else:
-                                        features[&#34;nb_implicit_W&#34;] += 1
-
-                                        ASlist_prev = routes[update[&#34;fields&#34;][&#34;prefix&#34;]][update[&#34;collector&#34;]][update[&#34;peer_asn&#34;]].split(&#34; &#34;)
-                                        ASlist_new = Uas_path.split(&#34; &#34;)
-
-                                        if(ASlist_prev[-1] != ASlist_new[-1]):
-                                                features[&#34;nb_orign_change&#34;] += 1
-
-                                        if(len(ASlist_new) &gt; len(ASlist_prev)):
-                                                features[&#34;nb_tolonger&#34;] += 1
-                                        else:
-                                                features[&#34;nb_toshorter&#34;] += 1
-
-                                        edist = editdistance.eval(ASlist_prev,ASlist_new)
-                                        editDist.append(edist)
-                                        if(edist &gt;= 7 and edist &lt;= 17):
-                                                features[&#34;editdist_&#34;+str(edist)] += 1
-
-                                routes[update[&#34;fields&#34;][&#34;prefix&#34;]][update[&#34;collector&#34;]][update[&#34;peer_asn&#34;]] = Uas_path
-
-                        elif(update[&#34;type&#34;]==&#39;W&#39;):
-
-                                features[&#34;nb_W&#34;] += 1
-
-                                if(update[&#34;fields&#34;][&#34;prefix&#34;] not in W_per_prefix):
-                                        W_per_prefix[update[&#34;fields&#34;][&#34;prefix&#34;]] = 0
-
-                                W_per_prefix[update[&#34;fields&#34;][&#34;prefix&#34;]] += 1
-
-                                if(update[&#34;peer_asn&#34;] in routes[update[&#34;fields&#34;][&#34;prefix&#34;]][update[&#34;collector&#34;]] and routes[update[&#34;fields&#34;][&#34;prefix&#34;]][update[&#34;collector&#34;]][update[&#34;peer_asn&#34;]]==&#34;w&#34;+str(index)):
-                                        
-                                        features[&#34;nb_dup_W&#34;] += 1
-
-                                routes[update[&#34;fields&#34;][&#34;prefix&#34;]][update[&#34;collector&#34;]][update[&#34;peer_asn&#34;]] = &#34;w&#34;+str(index)
-
-                        if(prevTime!=0):
-                                iTime = int(update[&#34;time&#34;]) - prevTime
-                                if(iTime &gt; 0):
-                                        inter_time.append(iTime)
-
-                        prevTime = int(update[&#34;time&#34;])
-
-        features[&#34;nb_A_prefix&#34;] = len(A_per_prefix)
-        features[&#34;nb_W_prefix&#34;] = len(W_per_prefix)
-        A_per_prefix_values = A_per_prefix.values()
-        if(len(A_per_prefix_values)&gt;1):
-                features[&#34;max_A_prefix&#34;] = max(A_per_prefix_values)
-                features[&#34;avg_A_prefix&#34;] = round(sum(A_per_prefix_values) / len(A_per_prefix_values))
-
-        A_per_AS_values = A_per_AS.values()
-        if(len(A_per_AS_values)&gt;1):
-                features[&#34;max_A_AS&#34;] = max(A_per_AS_values)
-                features[&#34;avg_A_AS&#34;] = round(sum(A_per_AS_values) / len(A_per_AS_values))
-
-        if(len(path_len)&gt;1):
-                features[&#34;max_path_len&#34;] =  max(path_len)
-                features[&#34;avg_path_len&#34;] = round(sum(path_len) / len(path_len))
-
-        if(len(inter_time)&gt;1):
-                features[&#34;avg_interarrival&#34;] = round(sum(inter_time) *1000/ len(inter_time))
-
-        if(len(editDist)&gt;1):
-                features[&#34;max_editdist&#34;] =  max(editDist)
-                features[&#34;avg_editdist&#34;] = round(sum(editDist) / len(editDist))
-
-        return(features)</code></pre>
+    return(features)</code></pre>
 </details>
 </dd>
 </dl>
-<h3>Inherited members</h3>
-<ul class="hlist">
-<li><code><b><a title="BML.transform.base_transform.BaseTransform" href="base_transform.html#BML.transform.base_transform.BaseTransform">BaseTransform</a></b></code>:
-<ul class="hlist">
-<li><code><a title="BML.transform.base_transform.BaseTransform.run" href="base_transform.html#BML.transform.base_transform.BaseTransform.run">run</a></code></li>
-</ul>
-</li>
-</ul>
 </dd>
 </dl>
 </section>
 </article>
 <nav id="sidebar">
-<a href="" style="font-size:4em;color:#058">BML</a>
+<a href="https://kevinhoarau.github.io/BML/" style="font-size:4em;color:#058">BML</a>
 <hr style="margin-top:30px;margin-bottom:30px;">
 <form>
 <input id="lunr-search" name="q" placeholder="🔎 Search ..." aria-label="Search"
@@ -716,7 +621,7 @@ const query = new URL(window.location).searchParams.get('q');
 if (query)
 search(query);
 function search(query) {
-const url = '../../doc-search.html#' + encodeURIComponent(query);
+const url = '../search.html#' + encodeURIComponent(query);
 new tingle.modal({
 cssClass: ['modal-dialog'],
 onClose: () => {
@@ -738,11 +643,6 @@ setTimeout(() => input.focus(), 100);
 <li><code><a title="BML.transform" href="index.html">BML.transform</a></code></li>
 </ul>
 </li>
-<li><h3><a href="#header-functions">Functions</a></h3>
-<ul class="">
-<li><code><a title="BML.transform.features.selectedASes" href="#BML.transform.features.selectedASes">selectedASes</a></code></li>
-</ul>
-</li>
 <li><h3><a href="#header-classes">Classes</a></h3>
 <ul>
 <li>
@@ -759,7 +659,7 @@ setTimeout(() => input.focus(), 100);
 </nav>
 </main>
 <footer id="footer">
-<p>Generated by <a href="https://pdoc3.github.io/pdoc"><cite>pdoc</cite> 0.9.2</a>.</p>
+<p>Generated by <a href="https://pdoc3.github.io/pdoc"><cite>pdoc</cite> 0.9.1</a>.</p>
 </footer>
 </body>
 </html>

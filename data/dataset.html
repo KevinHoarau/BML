@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1" />
-<meta name="generator" content="pdoc 0.9.2" />
+<meta name="generator" content="pdoc 0.9.1" />
 <title>BML.data.dataset API documentation</title>
 <meta name="description" content="" />
 <link rel="preload stylesheet" as="style" href="https://cdnjs.cloudflare.com/ajax/libs/10up-sanitize.css/11.0.1/sanitize.min.css" integrity="sha256-PK9q560IAAa6WVRRh76LtCaI8pjTJ2z11v0miyNNjrs=" crossorigin>
@@ -28,135 +28,118 @@
 </summary>
 <pre><code class="python">#!/usr/bin/env python3
 
-import os, random
+import sys, os, random
 import json
-from BML.utils import utils
+from BML import utils
 from BML.data.updates import dumpUpdates
 from BML.data.routes import dumpRoutes
 
-def processSample(label, start_time, end_time, name, priming, collectors, folder, ipVersion, projects, useRibsPriming, useRibsData, skipIfExist, logFiles=[]):
+def collectData(label, start_time, end_time, name, folder, params, logFiles=[]):
 
-        e_folder = utils.mkdirPath(folder + label + os.sep + str(name))
-        logFiles.append(open(e_folder + &#34;log_collect_sample.log&#34;, &#34;w&#34;))
+    e_folder = utils.mkdirPath(folder + label + os.sep + str(name))
+    logFiles.append(open(e_folder + &#34;log_collect_sample.log&#34;, &#34;w&#34;))
 
-        utils.printAndLog(&#34;##################&#34;, logFiles)
-        utils.printAndLog(&#34;# Collect sample&#34;, logFiles)
-        utils.printAndLog(&#34;#################&#34;, logFiles)
+    utils.printAndLog(&#34;##################&#34;, logFiles)
+    utils.printAndLog(&#34;# Collect sample&#34;, logFiles)
+    utils.printAndLog(&#34;#################&#34;, logFiles)
 
-        utils.printAndLog(&#34;Name: {}&#34;.format(name), logFiles)
-        utils.printAndLog(&#34;Label: {}&#34;.format(label), logFiles)
-        utils.printAndLog(&#34;Start time: {}&#34;.format(start_time), logFiles)
-        utils.printAndLog(&#34;End time: {}&#34;.format(end_time), logFiles)
+    utils.printAndLog(&#34;Name: {}&#34;.format(name), logFiles)
+    utils.printAndLog(&#34;Label: {}&#34;.format(label), logFiles)
+    utils.printAndLog(&#34;Start time: {}&#34;.format(start_time), logFiles)
+    utils.printAndLog(&#34;End time: {}&#34;.format(end_time), logFiles)
 
-        utils.printAndLog(&#34;**************************&#34;, logFiles)
-        utils.printAndLog(&#34;* Priming data collection&#34;, logFiles)
-        utils.printAndLog(&#34;**************************&#34;, logFiles)
+    utils.printAndLog(&#34;**************************&#34;, logFiles)
+    utils.printAndLog(&#34;* Priming data collection&#34;, logFiles)
+    utils.printAndLog(&#34;**************************&#34;, logFiles)
 
-        if(os.path.exists(e_folder + &#34;priming_data&#34; + os.sep +&#34;routes.json.gz&#34;) and skipIfExist):
-                utils.printAndLog(&#34;Data exists, skipped&#34;, logFiles)
-        else:
-                # Priming data collection
-                primingUpdatesFile = dumpUpdates(start_time-priming, start_time, e_folder + &#34;priming_data&#34;, collectors, logFiles=logFiles[:], projects=projects, ipVersion=ipVersion, useRibs=useRibsPriming)
-                primingDumpFile = dumpRoutes(0, 0, e_folder + &#34;priming_data&#34;, [], saveRoutes=True, updatesDumpFile=primingUpdatesFile, logFiles=logFiles[:], projects=projects, ipVersion=ipVersion)
+    if(os.path.exists(e_folder + &#34;priming_data&#34; + os.sep +&#34;routes.json.gz&#34;) and params[&#34;SkipIfExist&#34;]):
+        utils.printAndLog(&#34;Data exists, skipped&#34;, logFiles)
+    else:
+        
+        # Priming data collection
+        paramsUpdate = {
+            &#34;Projects&#34;: params[&#34;Projects&#34;],
+            &#34;Collectors&#34;: params[&#34;Collectors&#34;],
+            &#34;IpVersion&#34;: params[&#34;IpVersion&#34;],
+            &#34;UseRibs&#34;: params[&#34;UseRibsPriming&#34;],
+        }
+        primingUpdatesFile = dumpUpdates(start_time-params[&#34;PrimingPeriod&#34;]*60, start_time, e_folder + &#34;priming_data&#34;, params=paramsUpdate, logFiles=logFiles[:])
+        _ , primingDumpFile = dumpRoutes(primingUpdatesFile, routes={}, outFolder=e_folder + &#34;priming_data&#34;, logFiles=logFiles[:])
 
-                utils.gzipFile(primingDumpFile, remove=True)
-                os.remove(primingUpdatesFile)
+        utils.gzipFile(primingDumpFile, remove=True)
+        os.remove(primingUpdatesFile)
 
-        utils.printAndLog(&#34;********************&#34;, logFiles)
-        utils.printAndLog(&#34;* Data collection&#34;, logFiles)
-        utils.printAndLog(&#34;********************&#34;, logFiles)
+    utils.printAndLog(&#34;********************&#34;, logFiles)
+    utils.printAndLog(&#34;* Data collection&#34;, logFiles)
+    utils.printAndLog(&#34;********************&#34;, logFiles)
 
-        if(os.path.exists(e_folder + &#34;data&#34; + os.sep +&#34;updates.csv.gz&#34;) and skipIfExist):
-                utils.printAndLog(&#34;Data exists, skipped&#34;, logFiles)
-        else:
-                # Data collection
-                updatesFilePath = dumpUpdates(start_time, end_time, e_folder + &#34;data&#34;, collectors, logFiles=logFiles[:], projects=projects, ipVersion=ipVersion, useRibs=useRibsData)
-                
-                utils.gzipFile(updatesFilePath, remove=True)
+    if(os.path.exists(e_folder + &#34;data&#34; + os.sep +&#34;updates.csv.gz&#34;) and params[&#34;SkipIfExist&#34;]):
+        utils.printAndLog(&#34;Data exists, skipped&#34;, logFiles)
+    else:
+        # Data collection
+        paramsUpdate = {
+            &#34;Projects&#34;: params[&#34;Projects&#34;],
+            &#34;Collectors&#34;: params[&#34;Collectors&#34;],
+            &#34;IpVersion&#34;: params[&#34;IpVersion&#34;],
+            &#34;UseRibs&#34;: params[&#34;UseRibsData&#34;],
+        }
+        updatesFilePath = dumpUpdates(start_time, end_time, e_folder + &#34;data&#34;, params=paramsUpdate, logFiles=logFiles[:])
+        
+        utils.gzipFile(updatesFilePath, remove=True)
 
 class Dataset():
 
-        def __init__(self, folder):
-
-                self.projects = [&#39;ris&#39;,&#39;routeviews&#39;]
-                self.collectors = []
-                self.ipVersion = [4,6]
-                self.periodsOfInterests = []
-                self.folder = folder
-                self.primingPeriod = 1*60*60
-                self.skipIfExist = True
-                self.useRibsPriming = False
-                self.useRibsData = False
-
-        def setUseRibs(self, useRibsPriming, useRibsData):
-                self.useRibsPriming = useRibsPriming
-                self.useRibsData = useRibsData
-
-        def setIpVersion(self, ipVersion):
-                self.ipVersion = ipVersion
-
-        def setProjects(self, projects):
-                self.projects = projects
-
-        def setCollectors(self, collectors):
-                self.collectors = collectors
-
-        def setPeriodsOfInterests(self, periodsOfInterests):
-                self.periodsOfInterests = periodsOfInterests
-
-        def setPrimingPeriod(self, primingPeriod):
-                self.primingPeriod = primingPeriod * 60
-
-        def setFolder(self, folder):
-                self.folder = folder
-
-        def setSkipIfExist(self, skipIfExist):
-                self.skipIfExist = skipIfExist
-
-        def load(self, d):
-                if(&#34;IpVersion&#34; in d.keys()):
-                        self.setIpVersion(d[&#34;IpVersion&#34;])
+    def __init__(self, folder):
+        
+        self.params = {
+            &#34;Projects&#34; : [&#39;ris&#39;,&#39;routeviews&#39;],
+            &#34;Collectors&#34; : [],
+            &#34;IpVersion&#34; : [4,6],
+            &#34;PrimingPeriod&#34; : 1*60,
+            &#34;UseRibsPriming&#34; : False,
+            &#34;UseRibsData&#34; : False,
+            &#34;SkipIfExist&#34; : True
+        }
+        
+        self.folder= folder
+    
+    def setParams(self, params):
+        for k,v in params.items():
+            if(k in self.params):
+                self.params[k] = v
+            else:
+                sys.exit(&#34;Unrecognized parameter:&#34;+k)
                 
-                if(&#34;Projects&#34; in d.keys()):
-                        self.setProjects(d[&#34;Projects&#34;])
+    def setPeriodsOfInterests(self, periodsOfInterests):
+        self.periodsOfInterests = periodsOfInterests
+
+    def getJobs(self):
+
+        jobs = []
+
+        for period in self.periodsOfInterests:
+            
+            params = self.params.copy()
+            
+            if(&#34;params&#34; in period):
+                for k,v in period[&#34;params&#34;].items():
+                    if(k in params):
+                        params[k] = v
+                    else:
+                        sys.exit(&#34;Unrecognized parameter:&#34;+k)
                 
-                if(&#34;Collectors&#34; in d.keys()):
-                        self.setCollectors(d[&#34;Collectors&#34;])
-                
-                if(&#34;PeriodsOfInterests&#34; in d.keys()):
-                        self.setPeriodsOfInterests(d[&#34;PeriodsOfInterests&#34;])
-                
-                if(&#34;PrimingPeriod&#34; in d.keys()):
-                        self.setPrimingPeriod(d[&#34;PrimingPeriod&#34;])
+            j = {
+                &#39;includes&#39; : &#34;from BML.data.dataset import collectData&#34;,
+                &#39;target&#39;: &#34;collectData&#34;,
+                &#39;args&#39;: (period[&#34;label&#34;], period[&#34;start_time&#34;], period[&#34;end_time&#34;], period[&#34;name&#34;], self.folder, params),
+                &#39;kwargs&#39;: {&#39;logFiles&#39;:[&#34;LOG_ONLY&#34;]}
+            }
 
-                if(&#34;UseRibsPriming&#34; in d.keys()):
-                        self.useRibsPriming = d[&#34;UseRibsPriming&#34;]
+            jobs.append(j)
 
-                if(&#34;UseRibsData&#34; in d.keys()):
-                        self.useRibsData = d[&#34;UseRibsData&#34;]
+        random.shuffle(jobs) 
 
-        def loadFromFile(self, fpath):
-                self.load(json.load(open(fpath)))
-
-        def getJobs(self):
-
-                jobs = []
-
-                for period in self.periodsOfInterests:
-
-                        j = {
-                                &#39;includes&#39; : &#34;from BML.data.dataset import processSample&#34;,
-                                &#39;target&#39;: processSample.__name__,
-                                &#39;args&#39;: (period[&#34;label&#34;], period[&#34;start_time&#34;], period[&#34;end_time&#34;], period[&#34;name&#34;], self.primingPeriod, self.collectors, self.folder, self.ipVersion, self.projects, self.useRibsPriming, self.useRibsData, self.skipIfExist),
-                                &#39;kwargs&#39;: {&#39;logFiles&#39;:[&#34;LOG_ONLY&#34;]}
-                        }
-
-                        jobs.append(j)
-
-
-                random.shuffle(jobs) 
-
-                return(jobs)</code></pre>
+        return(jobs)</code></pre>
 </details>
 </section>
 <section>
@@ -166,8 +149,8 @@ class Dataset():
 <section>
 <h2 class="section-title" id="header-functions">Functions</h2>
 <dl>
-<dt id="BML.data.dataset.processSample"><code class="name flex">
-<span>def <span class="ident">processSample</span></span>(<span>label, start_time, end_time, name, priming, collectors, folder, ipVersion, projects, useRibsPriming, useRibsData, skipIfExist, logFiles=[])</span>
+<dt id="BML.data.dataset.collectData"><code class="name flex">
+<span>def <span class="ident">collectData</span></span>(<span>label, start_time, end_time, name, folder, params, logFiles=[])</span>
 </code></dt>
 <dd>
 <div class="desc"></div>
@@ -175,45 +158,58 @@ class Dataset():
 <summary>
 <span>Expand source code</span>
 </summary>
-<pre><code class="python">def processSample(label, start_time, end_time, name, priming, collectors, folder, ipVersion, projects, useRibsPriming, useRibsData, skipIfExist, logFiles=[]):
+<pre><code class="python">def collectData(label, start_time, end_time, name, folder, params, logFiles=[]):
 
-        e_folder = utils.mkdirPath(folder + label + os.sep + str(name))
-        logFiles.append(open(e_folder + &#34;log_collect_sample.log&#34;, &#34;w&#34;))
+    e_folder = utils.mkdirPath(folder + label + os.sep + str(name))
+    logFiles.append(open(e_folder + &#34;log_collect_sample.log&#34;, &#34;w&#34;))
 
-        utils.printAndLog(&#34;##################&#34;, logFiles)
-        utils.printAndLog(&#34;# Collect sample&#34;, logFiles)
-        utils.printAndLog(&#34;#################&#34;, logFiles)
+    utils.printAndLog(&#34;##################&#34;, logFiles)
+    utils.printAndLog(&#34;# Collect sample&#34;, logFiles)
+    utils.printAndLog(&#34;#################&#34;, logFiles)
 
-        utils.printAndLog(&#34;Name: {}&#34;.format(name), logFiles)
-        utils.printAndLog(&#34;Label: {}&#34;.format(label), logFiles)
-        utils.printAndLog(&#34;Start time: {}&#34;.format(start_time), logFiles)
-        utils.printAndLog(&#34;End time: {}&#34;.format(end_time), logFiles)
+    utils.printAndLog(&#34;Name: {}&#34;.format(name), logFiles)
+    utils.printAndLog(&#34;Label: {}&#34;.format(label), logFiles)
+    utils.printAndLog(&#34;Start time: {}&#34;.format(start_time), logFiles)
+    utils.printAndLog(&#34;End time: {}&#34;.format(end_time), logFiles)
 
-        utils.printAndLog(&#34;**************************&#34;, logFiles)
-        utils.printAndLog(&#34;* Priming data collection&#34;, logFiles)
-        utils.printAndLog(&#34;**************************&#34;, logFiles)
+    utils.printAndLog(&#34;**************************&#34;, logFiles)
+    utils.printAndLog(&#34;* Priming data collection&#34;, logFiles)
+    utils.printAndLog(&#34;**************************&#34;, logFiles)
 
-        if(os.path.exists(e_folder + &#34;priming_data&#34; + os.sep +&#34;routes.json.gz&#34;) and skipIfExist):
-                utils.printAndLog(&#34;Data exists, skipped&#34;, logFiles)
-        else:
-                # Priming data collection
-                primingUpdatesFile = dumpUpdates(start_time-priming, start_time, e_folder + &#34;priming_data&#34;, collectors, logFiles=logFiles[:], projects=projects, ipVersion=ipVersion, useRibs=useRibsPriming)
-                primingDumpFile = dumpRoutes(0, 0, e_folder + &#34;priming_data&#34;, [], saveRoutes=True, updatesDumpFile=primingUpdatesFile, logFiles=logFiles[:], projects=projects, ipVersion=ipVersion)
+    if(os.path.exists(e_folder + &#34;priming_data&#34; + os.sep +&#34;routes.json.gz&#34;) and params[&#34;SkipIfExist&#34;]):
+        utils.printAndLog(&#34;Data exists, skipped&#34;, logFiles)
+    else:
+        
+        # Priming data collection
+        paramsUpdate = {
+            &#34;Projects&#34;: params[&#34;Projects&#34;],
+            &#34;Collectors&#34;: params[&#34;Collectors&#34;],
+            &#34;IpVersion&#34;: params[&#34;IpVersion&#34;],
+            &#34;UseRibs&#34;: params[&#34;UseRibsPriming&#34;],
+        }
+        primingUpdatesFile = dumpUpdates(start_time-params[&#34;PrimingPeriod&#34;]*60, start_time, e_folder + &#34;priming_data&#34;, params=paramsUpdate, logFiles=logFiles[:])
+        _ , primingDumpFile = dumpRoutes(primingUpdatesFile, routes={}, outFolder=e_folder + &#34;priming_data&#34;, logFiles=logFiles[:])
 
-                utils.gzipFile(primingDumpFile, remove=True)
-                os.remove(primingUpdatesFile)
+        utils.gzipFile(primingDumpFile, remove=True)
+        os.remove(primingUpdatesFile)
 
-        utils.printAndLog(&#34;********************&#34;, logFiles)
-        utils.printAndLog(&#34;* Data collection&#34;, logFiles)
-        utils.printAndLog(&#34;********************&#34;, logFiles)
+    utils.printAndLog(&#34;********************&#34;, logFiles)
+    utils.printAndLog(&#34;* Data collection&#34;, logFiles)
+    utils.printAndLog(&#34;********************&#34;, logFiles)
 
-        if(os.path.exists(e_folder + &#34;data&#34; + os.sep +&#34;updates.csv.gz&#34;) and skipIfExist):
-                utils.printAndLog(&#34;Data exists, skipped&#34;, logFiles)
-        else:
-                # Data collection
-                updatesFilePath = dumpUpdates(start_time, end_time, e_folder + &#34;data&#34;, collectors, logFiles=logFiles[:], projects=projects, ipVersion=ipVersion, useRibs=useRibsData)
-                
-                utils.gzipFile(updatesFilePath, remove=True)</code></pre>
+    if(os.path.exists(e_folder + &#34;data&#34; + os.sep +&#34;updates.csv.gz&#34;) and params[&#34;SkipIfExist&#34;]):
+        utils.printAndLog(&#34;Data exists, skipped&#34;, logFiles)
+    else:
+        # Data collection
+        paramsUpdate = {
+            &#34;Projects&#34;: params[&#34;Projects&#34;],
+            &#34;Collectors&#34;: params[&#34;Collectors&#34;],
+            &#34;IpVersion&#34;: params[&#34;IpVersion&#34;],
+            &#34;UseRibs&#34;: params[&#34;UseRibsData&#34;],
+        }
+        updatesFilePath = dumpUpdates(start_time, end_time, e_folder + &#34;data&#34;, params=paramsUpdate, logFiles=logFiles[:])
+        
+        utils.gzipFile(updatesFilePath, remove=True)</code></pre>
 </details>
 </dd>
 </dl>
@@ -233,87 +229,57 @@ class Dataset():
 </summary>
 <pre><code class="python">class Dataset():
 
-        def __init__(self, folder):
-
-                self.projects = [&#39;ris&#39;,&#39;routeviews&#39;]
-                self.collectors = []
-                self.ipVersion = [4,6]
-                self.periodsOfInterests = []
-                self.folder = folder
-                self.primingPeriod = 1*60*60
-                self.skipIfExist = True
-                self.useRibsPriming = False
-                self.useRibsData = False
-
-        def setUseRibs(self, useRibsPriming, useRibsData):
-                self.useRibsPriming = useRibsPriming
-                self.useRibsData = useRibsData
-
-        def setIpVersion(self, ipVersion):
-                self.ipVersion = ipVersion
-
-        def setProjects(self, projects):
-                self.projects = projects
-
-        def setCollectors(self, collectors):
-                self.collectors = collectors
-
-        def setPeriodsOfInterests(self, periodsOfInterests):
-                self.periodsOfInterests = periodsOfInterests
-
-        def setPrimingPeriod(self, primingPeriod):
-                self.primingPeriod = primingPeriod * 60
-
-        def setFolder(self, folder):
-                self.folder = folder
-
-        def setSkipIfExist(self, skipIfExist):
-                self.skipIfExist = skipIfExist
-
-        def load(self, d):
-                if(&#34;IpVersion&#34; in d.keys()):
-                        self.setIpVersion(d[&#34;IpVersion&#34;])
+    def __init__(self, folder):
+        
+        self.params = {
+            &#34;Projects&#34; : [&#39;ris&#39;,&#39;routeviews&#39;],
+            &#34;Collectors&#34; : [],
+            &#34;IpVersion&#34; : [4,6],
+            &#34;PrimingPeriod&#34; : 1*60,
+            &#34;UseRibsPriming&#34; : False,
+            &#34;UseRibsData&#34; : False,
+            &#34;SkipIfExist&#34; : True
+        }
+        
+        self.folder= folder
+    
+    def setParams(self, params):
+        for k,v in params.items():
+            if(k in self.params):
+                self.params[k] = v
+            else:
+                sys.exit(&#34;Unrecognized parameter:&#34;+k)
                 
-                if(&#34;Projects&#34; in d.keys()):
-                        self.setProjects(d[&#34;Projects&#34;])
+    def setPeriodsOfInterests(self, periodsOfInterests):
+        self.periodsOfInterests = periodsOfInterests
+
+    def getJobs(self):
+
+        jobs = []
+
+        for period in self.periodsOfInterests:
+            
+            params = self.params.copy()
+            
+            if(&#34;params&#34; in period):
+                for k,v in period[&#34;params&#34;].items():
+                    if(k in params):
+                        params[k] = v
+                    else:
+                        sys.exit(&#34;Unrecognized parameter:&#34;+k)
                 
-                if(&#34;Collectors&#34; in d.keys()):
-                        self.setCollectors(d[&#34;Collectors&#34;])
-                
-                if(&#34;PeriodsOfInterests&#34; in d.keys()):
-                        self.setPeriodsOfInterests(d[&#34;PeriodsOfInterests&#34;])
-                
-                if(&#34;PrimingPeriod&#34; in d.keys()):
-                        self.setPrimingPeriod(d[&#34;PrimingPeriod&#34;])
+            j = {
+                &#39;includes&#39; : &#34;from BML.data.dataset import collectData&#34;,
+                &#39;target&#39;: &#34;collectData&#34;,
+                &#39;args&#39;: (period[&#34;label&#34;], period[&#34;start_time&#34;], period[&#34;end_time&#34;], period[&#34;name&#34;], self.folder, params),
+                &#39;kwargs&#39;: {&#39;logFiles&#39;:[&#34;LOG_ONLY&#34;]}
+            }
 
-                if(&#34;UseRibsPriming&#34; in d.keys()):
-                        self.useRibsPriming = d[&#34;UseRibsPriming&#34;]
+            jobs.append(j)
 
-                if(&#34;UseRibsData&#34; in d.keys()):
-                        self.useRibsData = d[&#34;UseRibsData&#34;]
+        random.shuffle(jobs) 
 
-        def loadFromFile(self, fpath):
-                self.load(json.load(open(fpath)))
-
-        def getJobs(self):
-
-                jobs = []
-
-                for period in self.periodsOfInterests:
-
-                        j = {
-                                &#39;includes&#39; : &#34;from BML.data.dataset import processSample&#34;,
-                                &#39;target&#39;: processSample.__name__,
-                                &#39;args&#39;: (period[&#34;label&#34;], period[&#34;start_time&#34;], period[&#34;end_time&#34;], period[&#34;name&#34;], self.primingPeriod, self.collectors, self.folder, self.ipVersion, self.projects, self.useRibsPriming, self.useRibsData, self.skipIfExist),
-                                &#39;kwargs&#39;: {&#39;logFiles&#39;:[&#34;LOG_ONLY&#34;]}
-                        }
-
-                        jobs.append(j)
-
-
-                random.shuffle(jobs) 
-
-                return(jobs)</code></pre>
+        return(jobs)</code></pre>
 </details>
 <h3>Methods</h3>
 <dl>
@@ -328,59 +294,35 @@ class Dataset():
 </summary>
 <pre><code class="python">def getJobs(self):
 
-        jobs = []
+    jobs = []
 
-        for period in self.periodsOfInterests:
-
-                j = {
-                        &#39;includes&#39; : &#34;from BML.data.dataset import processSample&#34;,
-                        &#39;target&#39;: processSample.__name__,
-                        &#39;args&#39;: (period[&#34;label&#34;], period[&#34;start_time&#34;], period[&#34;end_time&#34;], period[&#34;name&#34;], self.primingPeriod, self.collectors, self.folder, self.ipVersion, self.projects, self.useRibsPriming, self.useRibsData, self.skipIfExist),
-                        &#39;kwargs&#39;: {&#39;logFiles&#39;:[&#34;LOG_ONLY&#34;]}
-                }
-
-                jobs.append(j)
-
-
-        random.shuffle(jobs) 
-
-        return(jobs)</code></pre>
-</details>
-</dd>
-<dt id="BML.data.dataset.Dataset.load"><code class="name flex">
-<span>def <span class="ident">load</span></span>(<span>self, d)</span>
-</code></dt>
-<dd>
-<div class="desc"></div>
-<details class="source">
-<summary>
-<span>Expand source code</span>
-</summary>
-<pre><code class="python">def load(self, d):
-        if(&#34;IpVersion&#34; in d.keys()):
-                self.setIpVersion(d[&#34;IpVersion&#34;])
+    for period in self.periodsOfInterests:
         
-        if(&#34;Projects&#34; in d.keys()):
-                self.setProjects(d[&#34;Projects&#34;])
+        params = self.params.copy()
         
-        if(&#34;Collectors&#34; in d.keys()):
-                self.setCollectors(d[&#34;Collectors&#34;])
-        
-        if(&#34;PeriodsOfInterests&#34; in d.keys()):
-                self.setPeriodsOfInterests(d[&#34;PeriodsOfInterests&#34;])
-        
-        if(&#34;PrimingPeriod&#34; in d.keys()):
-                self.setPrimingPeriod(d[&#34;PrimingPeriod&#34;])
+        if(&#34;params&#34; in period):
+            for k,v in period[&#34;params&#34;].items():
+                if(k in params):
+                    params[k] = v
+                else:
+                    sys.exit(&#34;Unrecognized parameter:&#34;+k)
+            
+        j = {
+            &#39;includes&#39; : &#34;from BML.data.dataset import collectData&#34;,
+            &#39;target&#39;: &#34;collectData&#34;,
+            &#39;args&#39;: (period[&#34;label&#34;], period[&#34;start_time&#34;], period[&#34;end_time&#34;], period[&#34;name&#34;], self.folder, params),
+            &#39;kwargs&#39;: {&#39;logFiles&#39;:[&#34;LOG_ONLY&#34;]}
+        }
 
-        if(&#34;UseRibsPriming&#34; in d.keys()):
-                self.useRibsPriming = d[&#34;UseRibsPriming&#34;]
+        jobs.append(j)
 
-        if(&#34;UseRibsData&#34; in d.keys()):
-                self.useRibsData = d[&#34;UseRibsData&#34;]</code></pre>
+    random.shuffle(jobs) 
+
+    return(jobs)</code></pre>
 </details>
 </dd>
-<dt id="BML.data.dataset.Dataset.loadFromFile"><code class="name flex">
-<span>def <span class="ident">loadFromFile</span></span>(<span>self, fpath)</span>
+<dt id="BML.data.dataset.Dataset.setParams"><code class="name flex">
+<span>def <span class="ident">setParams</span></span>(<span>self, params)</span>
 </code></dt>
 <dd>
 <div class="desc"></div>
@@ -388,47 +330,12 @@ class Dataset():
 <summary>
 <span>Expand source code</span>
 </summary>
-<pre><code class="python">def loadFromFile(self, fpath):
-        self.load(json.load(open(fpath)))</code></pre>
-</details>
-</dd>
-<dt id="BML.data.dataset.Dataset.setCollectors"><code class="name flex">
-<span>def <span class="ident">setCollectors</span></span>(<span>self, collectors)</span>
-</code></dt>
-<dd>
-<div class="desc"></div>
-<details class="source">
-<summary>
-<span>Expand source code</span>
-</summary>
-<pre><code class="python">def setCollectors(self, collectors):
-        self.collectors = collectors</code></pre>
-</details>
-</dd>
-<dt id="BML.data.dataset.Dataset.setFolder"><code class="name flex">
-<span>def <span class="ident">setFolder</span></span>(<span>self, folder)</span>
-</code></dt>
-<dd>
-<div class="desc"></div>
-<details class="source">
-<summary>
-<span>Expand source code</span>
-</summary>
-<pre><code class="python">def setFolder(self, folder):
-        self.folder = folder</code></pre>
-</details>
-</dd>
-<dt id="BML.data.dataset.Dataset.setIpVersion"><code class="name flex">
-<span>def <span class="ident">setIpVersion</span></span>(<span>self, ipVersion)</span>
-</code></dt>
-<dd>
-<div class="desc"></div>
-<details class="source">
-<summary>
-<span>Expand source code</span>
-</summary>
-<pre><code class="python">def setIpVersion(self, ipVersion):
-        self.ipVersion = ipVersion</code></pre>
+<pre><code class="python">def setParams(self, params):
+    for k,v in params.items():
+        if(k in self.params):
+            self.params[k] = v
+        else:
+            sys.exit(&#34;Unrecognized parameter:&#34;+k)</code></pre>
 </details>
 </dd>
 <dt id="BML.data.dataset.Dataset.setPeriodsOfInterests"><code class="name flex">
@@ -441,60 +348,7 @@ class Dataset():
 <span>Expand source code</span>
 </summary>
 <pre><code class="python">def setPeriodsOfInterests(self, periodsOfInterests):
-        self.periodsOfInterests = periodsOfInterests</code></pre>
-</details>
-</dd>
-<dt id="BML.data.dataset.Dataset.setPrimingPeriod"><code class="name flex">
-<span>def <span class="ident">setPrimingPeriod</span></span>(<span>self, primingPeriod)</span>
-</code></dt>
-<dd>
-<div class="desc"></div>
-<details class="source">
-<summary>
-<span>Expand source code</span>
-</summary>
-<pre><code class="python">def setPrimingPeriod(self, primingPeriod):
-        self.primingPeriod = primingPeriod * 60</code></pre>
-</details>
-</dd>
-<dt id="BML.data.dataset.Dataset.setProjects"><code class="name flex">
-<span>def <span class="ident">setProjects</span></span>(<span>self, projects)</span>
-</code></dt>
-<dd>
-<div class="desc"></div>
-<details class="source">
-<summary>
-<span>Expand source code</span>
-</summary>
-<pre><code class="python">def setProjects(self, projects):
-        self.projects = projects</code></pre>
-</details>
-</dd>
-<dt id="BML.data.dataset.Dataset.setSkipIfExist"><code class="name flex">
-<span>def <span class="ident">setSkipIfExist</span></span>(<span>self, skipIfExist)</span>
-</code></dt>
-<dd>
-<div class="desc"></div>
-<details class="source">
-<summary>
-<span>Expand source code</span>
-</summary>
-<pre><code class="python">def setSkipIfExist(self, skipIfExist):
-        self.skipIfExist = skipIfExist</code></pre>
-</details>
-</dd>
-<dt id="BML.data.dataset.Dataset.setUseRibs"><code class="name flex">
-<span>def <span class="ident">setUseRibs</span></span>(<span>self, useRibsPriming, useRibsData)</span>
-</code></dt>
-<dd>
-<div class="desc"></div>
-<details class="source">
-<summary>
-<span>Expand source code</span>
-</summary>
-<pre><code class="python">def setUseRibs(self, useRibsPriming, useRibsData):
-        self.useRibsPriming = useRibsPriming
-        self.useRibsData = useRibsData</code></pre>
+    self.periodsOfInterests = periodsOfInterests</code></pre>
 </details>
 </dd>
 </dl>
@@ -503,7 +357,7 @@ class Dataset():
 </section>
 </article>
 <nav id="sidebar">
-<a href="" style="font-size:4em;color:#058">BML</a>
+<a href="https://kevinhoarau.github.io/BML/" style="font-size:4em;color:#058">BML</a>
 <hr style="margin-top:30px;margin-bottom:30px;">
 <form>
 <input id="lunr-search" name="q" placeholder="🔎 Search ..." aria-label="Search"
@@ -539,7 +393,7 @@ const query = new URL(window.location).searchParams.get('q');
 if (query)
 search(query);
 function search(query) {
-const url = '../../doc-search.html#' + encodeURIComponent(query);
+const url = '../search.html#' + encodeURIComponent(query);
 new tingle.modal({
 cssClass: ['modal-dialog'],
 onClose: () => {
@@ -563,7 +417,7 @@ setTimeout(() => input.focus(), 100);
 </li>
 <li><h3><a href="#header-functions">Functions</a></h3>
 <ul class="">
-<li><code><a title="BML.data.dataset.processSample" href="#BML.data.dataset.processSample">processSample</a></code></li>
+<li><code><a title="BML.data.dataset.collectData" href="#BML.data.dataset.collectData">collectData</a></code></li>
 </ul>
 </li>
 <li><h3><a href="#header-classes">Classes</a></h3>
@@ -572,16 +426,8 @@ setTimeout(() => input.focus(), 100);
 <h4><code><a title="BML.data.dataset.Dataset" href="#BML.data.dataset.Dataset">Dataset</a></code></h4>
 <ul class="">
 <li><code><a title="BML.data.dataset.Dataset.getJobs" href="#BML.data.dataset.Dataset.getJobs">getJobs</a></code></li>
-<li><code><a title="BML.data.dataset.Dataset.load" href="#BML.data.dataset.Dataset.load">load</a></code></li>
-<li><code><a title="BML.data.dataset.Dataset.loadFromFile" href="#BML.data.dataset.Dataset.loadFromFile">loadFromFile</a></code></li>
-<li><code><a title="BML.data.dataset.Dataset.setCollectors" href="#BML.data.dataset.Dataset.setCollectors">setCollectors</a></code></li>
-<li><code><a title="BML.data.dataset.Dataset.setFolder" href="#BML.data.dataset.Dataset.setFolder">setFolder</a></code></li>
-<li><code><a title="BML.data.dataset.Dataset.setIpVersion" href="#BML.data.dataset.Dataset.setIpVersion">setIpVersion</a></code></li>
+<li><code><a title="BML.data.dataset.Dataset.setParams" href="#BML.data.dataset.Dataset.setParams">setParams</a></code></li>
 <li><code><a title="BML.data.dataset.Dataset.setPeriodsOfInterests" href="#BML.data.dataset.Dataset.setPeriodsOfInterests">setPeriodsOfInterests</a></code></li>
-<li><code><a title="BML.data.dataset.Dataset.setPrimingPeriod" href="#BML.data.dataset.Dataset.setPrimingPeriod">setPrimingPeriod</a></code></li>
-<li><code><a title="BML.data.dataset.Dataset.setProjects" href="#BML.data.dataset.Dataset.setProjects">setProjects</a></code></li>
-<li><code><a title="BML.data.dataset.Dataset.setSkipIfExist" href="#BML.data.dataset.Dataset.setSkipIfExist">setSkipIfExist</a></code></li>
-<li><code><a title="BML.data.dataset.Dataset.setUseRibs" href="#BML.data.dataset.Dataset.setUseRibs">setUseRibs</a></code></li>
 </ul>
 </li>
 </ul>
@@ -590,7 +436,7 @@ setTimeout(() => input.focus(), 100);
 </nav>
 </main>
 <footer id="footer">
-<p>Generated by <a href="https://pdoc3.github.io/pdoc"><cite>pdoc</cite> 0.9.2</a>.</p>
+<p>Generated by <a href="https://pdoc3.github.io/pdoc"><cite>pdoc</cite> 0.9.1</a>.</p>
 </footer>
 </body>
 </html>
