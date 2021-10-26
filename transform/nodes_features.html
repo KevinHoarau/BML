@@ -27,7 +27,7 @@
 <span>Expand source code</span>
 </summary>
 <pre><code class="python">from BML.transform import Graph, BaseTransform
-from BML.utils import ProcessingQueue, timeFormat
+from BML.utils import ProcessingQueue, timeFormat, printAndLog
 import multiprocessing
 
 import networkit as nk
@@ -35,8 +35,87 @@ import networkx as nx
 import numpy as np
 
 import random
-
 import time
+import threading
+
+from networkx import find_cliques
+
+
+def my_node_clique_number(G, nodes=None, cliques=None):
+    &#34;&#34;&#34;Returns the size of the largest maximal clique containing
+    each given node.
+    Returns a single or list depending on input nodes.
+    Optional list of cliques can be input if already computed.
+    &#34;&#34;&#34;
+    if cliques is None:
+        if nodes is not None:
+            # Use ego_graph to decrease size of graph
+            if isinstance(nodes, list):
+                d = {}
+                for n in nodes:
+                    H = nx.ego_graph(G, n)
+                    d[n] = max(len(c) for c in find_cliques(H))
+            else:
+                H = nx.ego_graph(G, nodes)
+                d = max(len(c) for c in find_cliques(H))
+            return d
+        # nodes is None--find all cliques
+        cliques = list(find_cliques(G))
+        
+    all_nodes = False
+    if nodes is None:
+        all_nodes = True
+        nodes = list(G.nodes())  # none, get entire graph
+
+    if not isinstance(nodes, list):  # check for a list
+        v = nodes
+        # assume it is a single value
+        d = max([len(c) for c in cliques if v in c])
+    else:
+        d = {}
+        
+        for v in nodes:
+            d[v] = 0
+
+        for c in cliques:
+            l = len(c)
+            for v in c:
+                if(all_nodes or v in nodes):
+                    d[v] = max(d[v],l)
+    return d
+
+
+def my_number_of_cliques(G, nodes=None, cliques=None):
+    &#34;&#34;&#34;Returns the number of maximal cliques for each node.
+
+    Returns a single or list depending on input nodes.
+    Optional list of cliques can be input if already computed.
+    &#34;&#34;&#34;
+    if cliques is None:
+        cliques = list(find_cliques(G))
+    
+    all_nodes = False
+    if nodes is None:
+        all_nodes = True
+        nodes = list(G.nodes())  # none, get entire graph
+
+    if not isinstance(nodes, list):  # check for a list
+        v = nodes
+        # assume it is a single value
+        numcliq = len([1 for c in cliques if v in c])
+    else:
+        numcliq = {}
+            
+        for v in nodes:
+            numcliq[v] = 0
+
+        for c in cliques:
+            for v in c:
+                if(all_nodes or v in nodes):
+                    numcliq[v]+=1
+        
+    return numcliq
+
 
 def nx2cu(G):
     import cugraph, cudf
@@ -52,8 +131,9 @@ def nx2nk(G):
 
 def dictKeys(d, keys):
     subD = {}
+    keys2 = dict(d).keys()
     for k in keys:
-        if(k in d):
+        if(k in keys2):
             subD[k] = d[k]
     return(subD)
 
@@ -65,20 +145,12 @@ def betweenness(G, nodes):
     return(dictKeys(d,nodes))
 
 def betweenness_nk(G, Gnk, nodes):
-    d = nk.centrality.Betweenness(Gnk).run().scores()
-    return(dictKeys(valuesDict(d, G.nodes), nodes))
-
-def betweenness_subset(G, nodes):
-    d = nx.betweenness_centrality_subset(G, nodes, G.nodes)
-    return(dictKeys(d,nodes))
-
-def approx_betweenness_nk(G, Gnk, nodes):
-    d = nk.centrality.EstimateBetweenness(Gnk, len(nodes)).run().scores()
+    d = nk.centrality.Betweenness(Gnk,normalized=True).run().scores()
     return(dictKeys(valuesDict(d, G.nodes), nodes))
 
 def load(G, nodes):
-    v = [nx.load_centrality(G, v=n) for n in nodes]
-    return(valuesDict(v, nodes))
+    d = nx.load_centrality(G)
+    return(dictKeys(d, nodes))
 
 def closeness(G, nodes):
     v = [nx.closeness_centrality(G, u=n) for n in nodes]
@@ -97,7 +169,7 @@ def harmonic(G, nodes):
     return(d)
 
 def harmonic_nk(G, Gnk, nodes):
-    d = nk.centrality.HarmonicCloseness(Gnk).run().scores()
+    d = nk.centrality.HarmonicCloseness(Gnk, normalized=False).run().scores()
     return(dictKeys(valuesDict(d, G.nodes), nodes))
 
 def degree(G, nodes):
@@ -109,7 +181,7 @@ def degree_centrality(G, nodes):
     return(dictKeys(d,nodes))
 
 def degree_centrality_nk(G, Gnk, nodes):
-    d = nk.centrality.DegreeCentrality(Gnk).run().scores()
+    d = nk.centrality.DegreeCentrality(Gnk, normalized=True).run().scores()
     return(dictKeys(valuesDict(d, G.nodes), nodes))
 
 def eigenvector(G, nodes):
@@ -129,8 +201,11 @@ def pagerank_nk(G, Gnk, nodes):
     return(dictKeys(valuesDict(d, G.nodes), nodes))
 
 def number_of_cliques(G, nodes):
-    d = nx.number_of_cliques(G, nodes=nodes)
-    return(dictKeys(d,nodes))
+    if(nodes==G.nodes):
+        d = my_number_of_cliques(G)
+    else:
+        d = my_number_of_cliques(G, nodes=list(nodes))
+    return(dictKeys(d, nodes))
 
 def number_of_cliques_nk(G, Gnk, nodes):
     cliques = nk.clique.MaximalCliques(Gnk).run().getCliques()
@@ -141,16 +216,23 @@ def number_of_cliques_nk(G, Gnk, nodes):
     return(d)
 
 def node_clique_number(G, nodes):
-    d = nx.node_clique_number(G, nodes=nodes)
-    return(dictKeys(d,nodes))
+    if(nodes==G.nodes):
+        d = my_node_clique_number(G)
+    else:
+        d = my_node_clique_number(G, nodes=list(nodes))
+    return(dictKeys(d, nodes))
 
-def node_clique_number_nk(G, Gnk, nodes, cliques=None):
+def node_clique_number_nk(G, Gnk, nodes):
     cliques = nk.clique.MaximalCliques(Gnk).run().getCliques()
-    d = {}
-    for n,v in zip(G.nodes, Gnk.iterNodes()):
-        if(n in nodes):
-            d[n] = max([len(c) for c in cliques if v in c])
-    return(d)
+    v = {}
+    for node in Gnk.iterNodes():
+        v[node] = 0
+
+    for clique in cliques:
+        l = len(clique)
+        for node in clique:
+            v[node] = max(v[node], l)
+    return(dictKeys(valuesDict(v.values(), G.nodes), nodes))
 
 def clustering(G, nodes):
     d = nx.clustering(G, nodes=nodes)
@@ -191,6 +273,25 @@ def local_efficiency(G, nodes):
     v = [nx.global_efficiency(G.subgraph(G[n])) for n in nodes]
     return(valuesDict(v, nodes))
 
+def global_efficiency_nk(Gnk):
+    n = Gnk.numberOfNodes()
+    denom = n * (n - 1)
+    if denom != 0:
+        g_eff = 0
+        lengths = nk.distance.APSP(Gnk).run().getDistances()
+        for l in lengths:
+            for distance in l:
+                if distance &gt; 0:
+                    g_eff += 1 / distance
+        g_eff /= denom
+    else:
+        g_eff = 0
+    return g_eff
+
+def local_efficiency_nk(G, Gnk, nodes):
+    v = [global_efficiency_nk(nx2nk(G.subgraph(G[n]))) for n in nodes]
+    return(valuesDict(v, nodes))
+
 def average_shortest_path_length(G, nodes):
     def average_shortest_path_length_node(G, n):
         return(np.mean(list(nx.single_source_shortest_path_length(G,n).values())))
@@ -212,33 +313,26 @@ def connectivity(G, nodes): # too slow, see approx version
         v.append(np.mean([nx.connectivity.local_node_connectivity(G,n,t) for t in nodes]))
     return(valuesDict(v, nodes))
 
-def computeFeatures(features, verbose=False):
-    
+def run(function, results, key, logFiles, verbose,*args):
+    if(verbose):
+        printAndLog(&#34;Start:%s&#34; % (key), logFiles)
+    s = time.time()
+    try:
+        results[key] = function(*args)
+    except Exception as e:
+        print(&#34;Error with feature: &#34; + key)
+        raise e
+    if(verbose):
+        printAndLog(&#34;End:%s (%s)&#34; % (key, timeFormat(time.time()-s)), logFiles)
+
+def computeFeatures(features, logFiles, verbose=False):
     results = {}
-    times = {}
-    
     for key, value in features.items():
         function, *args = value
-        if(verbose):
-            print(&#34;Start:%s&#34; % (key))
-        s = time.time()
-        results[key] = function(*args)
-        if(verbose):
-            print(&#34;End:%s (%s)&#34; % (key, timeFormat(time.time()-s)))
-    
+        run(function, results, key, logFiles, verbose,*args)
     return(results)
 
-
-def run(function, results, key, verbose,*args):
-    if(verbose):
-        print(&#34;Start:%s&#34; % (key))
-    s = time.time()
-    results[key] = function(*args)
-    if(verbose):
-        print(&#34;End:%s (%s)&#34; % (key, timeFormat(time.time()-s)))
-    
-
-def computeFeaturesParallelized(features, nbProcess, verbose=False):
+def computeFeaturesParallelized(features, nbProcess, logFiles, verbose=False):
     
     manager = multiprocessing.Manager()
     results = manager.dict()
@@ -247,7 +341,7 @@ def computeFeaturesParallelized(features, nbProcess, verbose=False):
     
     for key, value in features.items():
         function, *args = value
-        pq.addProcess(target=run, args=(function, results, key, verbose,*args))
+        pq.addProcess(target=run, args=(function, results, key, logFiles, verbose,*args))
     
     pq.run()
     
@@ -279,17 +373,20 @@ class NodesFeatures(Graph):
         self.params[&#34;use_networkit&#34;] = True
         self.params[&#34;all_nodes&#34;] = True
         self.params[&#34;nodes&#34;] = None
-        self.params[&#34;exclude_features&#34;] = [&#34;load&#34;] # Excluded by default, too slow; ignored if include_features not empty
-        self.params[&#34;include_features&#34;] = [] # all features by default
+        self.params[&#34;exclude_features&#34;] = [] # Excluded by default
+        self.params[&#34;include_features&#34;] = [
+            &#39;degree&#39;, &#39;degree_centrality&#39;, &#39;average_neighbor_degree&#39;, &#39;node_clique_number&#39;, 
+            &#39;number_of_cliques&#39;, &#39;eigenvector&#39;, &#39;pagerank&#39;, &#39;clustering&#39;, &#39;triangles&#39;
+        ]
         self.params[&#34;verbose&#34;] = False
+        self.params[&#34;nbProcessFeatures&#34;] = multiprocessing.cpu_count()
 
         Graph.__init__(self, primingFile, dataFile, params, outFolder, logFiles)
-    
+
     def save(self):
         BaseTransform.save(self)
-    
-    def transforms(self, index, G):
-
+        
+    def getNodes(self, G):
         nodes = self.params[&#34;nodes&#34;]
 
         if(nodes is None):
@@ -299,49 +396,72 @@ class NodesFeatures(Graph):
                 G = nx.k_core(G, k, core_number)
 
             nodes = G.nodes
-
-        results = {}
-
-        features = {}
-        features[&#34;load&#34;] = (load, G, nodes) # slow
-        features[&#34;local_efficiency&#34;] = (local_efficiency, G, nodes)
-        features[&#34;harmonic&#34;] = (harmonic, G, nodes) # slow, but faster than harmonic_nk
-        features[&#34;degree&#34;] = (degree, G, nodes) # already fast with nx
-        features[&#34;degree_centrality&#34;] = (degree_centrality, G, nodes) # already fast with nx
-        features[&#34;square_clustering&#34;] = (square_clustering, G, nodes)
-        features[&#34;average_neighbor_degree&#34;] = (average_neighbor_degree, G, nodes)
-        features[&#34;betweenness&#34;] = (betweenness_subset, G, nodes) # faster than nx and nk betweeness
-
-        if(not self.params[&#34;use_networkit&#34;]):
-            features[&#34;closeness&#34;] = (closeness, G, nodes) 
-            features[&#34;eigenvector&#34;] = (eigenvector, G, nodes)
-            features[&#34;pagerank&#34;] = (pagerank, G, nodes)
-            features[&#34;number_of_cliques&#34;] = (number_of_cliques, G, nodes)
-            features[&#34;node_clique_number&#34;] = (node_clique_number, G, nodes)
-            features[&#34;clustering&#34;] = (clustering, G, nodes)
-            features[&#34;triangles&#34;] = (triangles, G, nodes)
-            features[&#34;eccentricity&#34;] = (eccentricity, G, nodes)
-            features[&#34;average_shortest_path_length&#34;] = (average_shortest_path_length, G, nodes)
-
-        features = removedExcludedFeatures(features, self.params[&#34;exclude_features&#34;], self.params[&#34;include_features&#34;])
-        results.update(computeFeaturesParallelized(features, self.params[&#34;nbProcess&#34;], self.params[&#34;verbose&#34;]))
-
+            
+        return(G, nodes)
+            
+    def getFeatures(self, G, nodes):
+        
+        features_nx = {}
+        features_nk = {}
+        
+        features_nx[&#34;load&#34;] = (load, G, nodes)
+        features_nx[&#34;degree&#34;] = (degree, G, nodes) # already fast with nx
+        features_nx[&#34;degree_centrality&#34;] = (degree_centrality, G, nodes) # already fast with nx
+        features_nx[&#34;square_clustering&#34;] = (square_clustering, G, nodes)
+        features_nx[&#34;average_neighbor_degree&#34;] = (average_neighbor_degree, G, nodes)
+        features_nx[&#34;node_clique_number&#34;] = (node_clique_number, G, nodes) # Fast with my fix
+        features_nx[&#34;number_of_cliques&#34;] = (number_of_cliques, G, nodes) # Fast with my fix
+        
         if(self.params[&#34;use_networkit&#34;]):
             Gnk = nx2nk(G)
+            features_nk[&#34;closeness&#34;] = (closeness_nk, G, Gnk, nodes)
+            features_nk[&#34;betweenness&#34;] = (betweenness_nk, G, Gnk, nodes)
+            features_nk[&#34;local_efficiency&#34;] = (local_efficiency_nk, G, Gnk, nodes)
+            features_nk[&#34;harmonic&#34;] = (harmonic_nk, G, Gnk, nodes) 
+            features_nk[&#34;eigenvector&#34;] = (eigenvector_nk, G, Gnk, nodes)
+            features_nk[&#34;pagerank&#34;] = (pagerank_nk, G, Gnk, nodes)
+            features_nk[&#34;clustering&#34;] = (clustering_nk, G, Gnk, nodes)
+            features_nk[&#34;triangles&#34;] = (triangles_nk, G, Gnk, nodes)
+            features_nk[&#34;eccentricity&#34;] = (eccentricity_nk, G, Gnk, nodes)
+            features_nk[&#34;average_shortest_path_length&#34;] = (average_shortest_path_length_nk, G, Gnk, nodes)
+        else:
+            features_nx[&#34;closeness&#34;] = (closeness, G, nodes) 
+            features_nx[&#34;betweenness&#34;] = (betweenness, G, nodes)
+            features_nx[&#34;local_efficiency&#34;] = (local_efficiency, G, nodes)
+            features_nx[&#34;harmonic&#34;] = (harmonic, G, nodes) 
+            features_nx[&#34;eigenvector&#34;] = (eigenvector, G, nodes)
+            features_nx[&#34;pagerank&#34;] = (pagerank, G, nodes)
+            features_nx[&#34;clustering&#34;] = (clustering, G, nodes)
+            features_nx[&#34;triangles&#34;] = (triangles, G, nodes)
+            features_nx[&#34;eccentricity&#34;] = (eccentricity, G, nodes)
+            features_nx[&#34;average_shortest_path_length&#34;] = (average_shortest_path_length, G, nodes)
+            
+        return(features_nx, features_nk)
+            
+    def computeFeatures(self, G, features_nx, features_nk):
+        
+        results = {}
+        
+        def func(results,features_nk,verbose):
+                results.update(computeFeatures(features_nk, self.logFiles, verbose))    
+        thread = threading.Thread(target=func, args=(results, features_nk, self.params[&#34;verbose&#34;]))
+        thread.start()
+        
+        results.update(computeFeaturesParallelized(features_nx, self.params[&#34;nbProcessFeatures&#34;], self.logFiles, self.params[&#34;verbose&#34;]))
+        thread.join()
+        
+        return(results)
 
-            features = {}
-            features[&#34;closeness&#34;] = (closeness_nk, G, Gnk, nodes)
-            features[&#34;eigenvector&#34;] = (eigenvector_nk, G, Gnk, nodes)
-            features[&#34;pagerank&#34;] = (pagerank_nk, G, Gnk, nodes)
-            features[&#34;number_of_cliques&#34;] = (number_of_cliques_nk, G, Gnk, nodes)
-            features[&#34;node_clique_number&#34;] = (node_clique_number_nk, G, Gnk, nodes)
-            features[&#34;clustering&#34;] = (clustering_nk, G, Gnk, nodes)
-            features[&#34;triangles&#34;] = (triangles_nk, G, Gnk, nodes)
-            features[&#34;eccentricity&#34;] = (eccentricity_nk, G, Gnk, nodes)
-            features[&#34;average_shortest_path_length&#34;] = (average_shortest_path_length_nk, G, Gnk, nodes)
+    def transforms(self, index, G):
+        
+        G, nodes = self.getNodes(G)
+        
+        features_nx, features_nk = self.getFeatures(G, nodes)
+        
+        features_nx = removedExcludedFeatures(features_nx, self.params[&#34;exclude_features&#34;], self.params[&#34;include_features&#34;])
+        features_nk = removedExcludedFeatures(features_nk, self.params[&#34;exclude_features&#34;], self.params[&#34;include_features&#34;])
 
-            features = removedExcludedFeatures(features, self.params[&#34;exclude_features&#34;], self.params[&#34;include_features&#34;])
-            results.update(computeFeatures(features, self.params[&#34;verbose&#34;]))
+        results = self.computeFeatures(G, features_nx, features_nk)
         
         return(results)</code></pre>
 </details>
@@ -353,20 +473,6 @@ class NodesFeatures(Graph):
 <section>
 <h2 class="section-title" id="header-functions">Functions</h2>
 <dl>
-<dt id="BML.transform.nodes_features.approx_betweenness_nk"><code class="name flex">
-<span>def <span class="ident">approx_betweenness_nk</span></span>(<span>G, Gnk, nodes)</span>
-</code></dt>
-<dd>
-<div class="desc"></div>
-<details class="source">
-<summary>
-<span>Expand source code</span>
-</summary>
-<pre><code class="python">def approx_betweenness_nk(G, Gnk, nodes):
-    d = nk.centrality.EstimateBetweenness(Gnk, len(nodes)).run().scores()
-    return(dictKeys(valuesDict(d, G.nodes), nodes))</code></pre>
-</details>
-</dd>
 <dt id="BML.transform.nodes_features.approx_closeness_nk"><code class="name flex">
 <span>def <span class="ident">approx_closeness_nk</span></span>(<span>G, Gnk, nodes)</span>
 </code></dt>
@@ -454,22 +560,8 @@ class NodesFeatures(Graph):
 <span>Expand source code</span>
 </summary>
 <pre><code class="python">def betweenness_nk(G, Gnk, nodes):
-    d = nk.centrality.Betweenness(Gnk).run().scores()
+    d = nk.centrality.Betweenness(Gnk,normalized=True).run().scores()
     return(dictKeys(valuesDict(d, G.nodes), nodes))</code></pre>
-</details>
-</dd>
-<dt id="BML.transform.nodes_features.betweenness_subset"><code class="name flex">
-<span>def <span class="ident">betweenness_subset</span></span>(<span>G, nodes)</span>
-</code></dt>
-<dd>
-<div class="desc"></div>
-<details class="source">
-<summary>
-<span>Expand source code</span>
-</summary>
-<pre><code class="python">def betweenness_subset(G, nodes):
-    d = nx.betweenness_centrality_subset(G, nodes, G.nodes)
-    return(dictKeys(d,nodes))</code></pre>
 </details>
 </dd>
 <dt id="BML.transform.nodes_features.closeness"><code class="name flex">
@@ -529,7 +621,7 @@ class NodesFeatures(Graph):
 </details>
 </dd>
 <dt id="BML.transform.nodes_features.computeFeatures"><code class="name flex">
-<span>def <span class="ident">computeFeatures</span></span>(<span>features, verbose=False)</span>
+<span>def <span class="ident">computeFeatures</span></span>(<span>features, logFiles, verbose=False)</span>
 </code></dt>
 <dd>
 <div class="desc"></div>
@@ -537,25 +629,16 @@ class NodesFeatures(Graph):
 <summary>
 <span>Expand source code</span>
 </summary>
-<pre><code class="python">def computeFeatures(features, verbose=False):
-    
+<pre><code class="python">def computeFeatures(features, logFiles, verbose=False):
     results = {}
-    times = {}
-    
     for key, value in features.items():
         function, *args = value
-        if(verbose):
-            print(&#34;Start:%s&#34; % (key))
-        s = time.time()
-        results[key] = function(*args)
-        if(verbose):
-            print(&#34;End:%s (%s)&#34; % (key, timeFormat(time.time()-s)))
-    
+        run(function, results, key, logFiles, verbose,*args)
     return(results)</code></pre>
 </details>
 </dd>
 <dt id="BML.transform.nodes_features.computeFeaturesParallelized"><code class="name flex">
-<span>def <span class="ident">computeFeaturesParallelized</span></span>(<span>features, nbProcess, verbose=False)</span>
+<span>def <span class="ident">computeFeaturesParallelized</span></span>(<span>features, nbProcess, logFiles, verbose=False)</span>
 </code></dt>
 <dd>
 <div class="desc"></div>
@@ -563,7 +646,7 @@ class NodesFeatures(Graph):
 <summary>
 <span>Expand source code</span>
 </summary>
-<pre><code class="python">def computeFeaturesParallelized(features, nbProcess, verbose=False):
+<pre><code class="python">def computeFeaturesParallelized(features, nbProcess, logFiles, verbose=False):
     
     manager = multiprocessing.Manager()
     results = manager.dict()
@@ -572,7 +655,7 @@ class NodesFeatures(Graph):
     
     for key, value in features.items():
         function, *args = value
-        pq.addProcess(target=run, args=(function, results, key, verbose,*args))
+        pq.addProcess(target=run, args=(function, results, key, logFiles, verbose,*args))
     
     pq.run()
     
@@ -638,7 +721,7 @@ class NodesFeatures(Graph):
 <span>Expand source code</span>
 </summary>
 <pre><code class="python">def degree_centrality_nk(G, Gnk, nodes):
-    d = nk.centrality.DegreeCentrality(Gnk).run().scores()
+    d = nk.centrality.DegreeCentrality(Gnk, normalized=True).run().scores()
     return(dictKeys(valuesDict(d, G.nodes), nodes))</code></pre>
 </details>
 </dd>
@@ -653,8 +736,9 @@ class NodesFeatures(Graph):
 </summary>
 <pre><code class="python">def dictKeys(d, keys):
     subD = {}
+    keys2 = dict(d).keys()
     for k in keys:
-        if(k in d):
+        if(k in keys2):
             subD[k] = d[k]
     return(subD)</code></pre>
 </details>
@@ -718,6 +802,31 @@ class NodesFeatures(Graph):
     return(dictKeys(valuesDict(d, G.nodes), nodes))</code></pre>
 </details>
 </dd>
+<dt id="BML.transform.nodes_features.global_efficiency_nk"><code class="name flex">
+<span>def <span class="ident">global_efficiency_nk</span></span>(<span>Gnk)</span>
+</code></dt>
+<dd>
+<div class="desc"></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def global_efficiency_nk(Gnk):
+    n = Gnk.numberOfNodes()
+    denom = n * (n - 1)
+    if denom != 0:
+        g_eff = 0
+        lengths = nk.distance.APSP(Gnk).run().getDistances()
+        for l in lengths:
+            for distance in l:
+                if distance &gt; 0:
+                    g_eff += 1 / distance
+        g_eff /= denom
+    else:
+        g_eff = 0
+    return g_eff</code></pre>
+</details>
+</dd>
 <dt id="BML.transform.nodes_features.harmonic"><code class="name flex">
 <span>def <span class="ident">harmonic</span></span>(<span>G, nodes)</span>
 </code></dt>
@@ -742,7 +851,7 @@ class NodesFeatures(Graph):
 <span>Expand source code</span>
 </summary>
 <pre><code class="python">def harmonic_nk(G, Gnk, nodes):
-    d = nk.centrality.HarmonicCloseness(Gnk).run().scores()
+    d = nk.centrality.HarmonicCloseness(Gnk, normalized=False).run().scores()
     return(dictKeys(valuesDict(d, G.nodes), nodes))</code></pre>
 </details>
 </dd>
@@ -756,8 +865,8 @@ class NodesFeatures(Graph):
 <span>Expand source code</span>
 </summary>
 <pre><code class="python">def load(G, nodes):
-    v = [nx.load_centrality(G, v=n) for n in nodes]
-    return(valuesDict(v, nodes))</code></pre>
+    d = nx.load_centrality(G)
+    return(dictKeys(d, nodes))</code></pre>
 </details>
 </dd>
 <dt id="BML.transform.nodes_features.local_efficiency"><code class="name flex">
@@ -774,6 +883,119 @@ class NodesFeatures(Graph):
     return(valuesDict(v, nodes))</code></pre>
 </details>
 </dd>
+<dt id="BML.transform.nodes_features.local_efficiency_nk"><code class="name flex">
+<span>def <span class="ident">local_efficiency_nk</span></span>(<span>G, Gnk, nodes)</span>
+</code></dt>
+<dd>
+<div class="desc"></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def local_efficiency_nk(G, Gnk, nodes):
+    v = [global_efficiency_nk(nx2nk(G.subgraph(G[n]))) for n in nodes]
+    return(valuesDict(v, nodes))</code></pre>
+</details>
+</dd>
+<dt id="BML.transform.nodes_features.my_node_clique_number"><code class="name flex">
+<span>def <span class="ident">my_node_clique_number</span></span>(<span>G, nodes=None, cliques=None)</span>
+</code></dt>
+<dd>
+<div class="desc"><p>Returns the size of the largest maximal clique containing
+each given node.
+Returns a single or list depending on input nodes.
+Optional list of cliques can be input if already computed.</p></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def my_node_clique_number(G, nodes=None, cliques=None):
+    &#34;&#34;&#34;Returns the size of the largest maximal clique containing
+    each given node.
+    Returns a single or list depending on input nodes.
+    Optional list of cliques can be input if already computed.
+    &#34;&#34;&#34;
+    if cliques is None:
+        if nodes is not None:
+            # Use ego_graph to decrease size of graph
+            if isinstance(nodes, list):
+                d = {}
+                for n in nodes:
+                    H = nx.ego_graph(G, n)
+                    d[n] = max(len(c) for c in find_cliques(H))
+            else:
+                H = nx.ego_graph(G, nodes)
+                d = max(len(c) for c in find_cliques(H))
+            return d
+        # nodes is None--find all cliques
+        cliques = list(find_cliques(G))
+        
+    all_nodes = False
+    if nodes is None:
+        all_nodes = True
+        nodes = list(G.nodes())  # none, get entire graph
+
+    if not isinstance(nodes, list):  # check for a list
+        v = nodes
+        # assume it is a single value
+        d = max([len(c) for c in cliques if v in c])
+    else:
+        d = {}
+        
+        for v in nodes:
+            d[v] = 0
+
+        for c in cliques:
+            l = len(c)
+            for v in c:
+                if(all_nodes or v in nodes):
+                    d[v] = max(d[v],l)
+    return d</code></pre>
+</details>
+</dd>
+<dt id="BML.transform.nodes_features.my_number_of_cliques"><code class="name flex">
+<span>def <span class="ident">my_number_of_cliques</span></span>(<span>G, nodes=None, cliques=None)</span>
+</code></dt>
+<dd>
+<div class="desc"><p>Returns the number of maximal cliques for each node.</p>
+<p>Returns a single or list depending on input nodes.
+Optional list of cliques can be input if already computed.</p></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def my_number_of_cliques(G, nodes=None, cliques=None):
+    &#34;&#34;&#34;Returns the number of maximal cliques for each node.
+
+    Returns a single or list depending on input nodes.
+    Optional list of cliques can be input if already computed.
+    &#34;&#34;&#34;
+    if cliques is None:
+        cliques = list(find_cliques(G))
+    
+    all_nodes = False
+    if nodes is None:
+        all_nodes = True
+        nodes = list(G.nodes())  # none, get entire graph
+
+    if not isinstance(nodes, list):  # check for a list
+        v = nodes
+        # assume it is a single value
+        numcliq = len([1 for c in cliques if v in c])
+    else:
+        numcliq = {}
+            
+        for v in nodes:
+            numcliq[v] = 0
+
+        for c in cliques:
+            for v in c:
+                if(all_nodes or v in nodes):
+                    numcliq[v]+=1
+        
+    return numcliq</code></pre>
+</details>
+</dd>
 <dt id="BML.transform.nodes_features.node_clique_number"><code class="name flex">
 <span>def <span class="ident">node_clique_number</span></span>(<span>G, nodes)</span>
 </code></dt>
@@ -784,12 +1006,15 @@ class NodesFeatures(Graph):
 <span>Expand source code</span>
 </summary>
 <pre><code class="python">def node_clique_number(G, nodes):
-    d = nx.node_clique_number(G, nodes=nodes)
-    return(dictKeys(d,nodes))</code></pre>
+    if(nodes==G.nodes):
+        d = my_node_clique_number(G)
+    else:
+        d = my_node_clique_number(G, nodes=list(nodes))
+    return(dictKeys(d, nodes))</code></pre>
 </details>
 </dd>
 <dt id="BML.transform.nodes_features.node_clique_number_nk"><code class="name flex">
-<span>def <span class="ident">node_clique_number_nk</span></span>(<span>G, Gnk, nodes, cliques=None)</span>
+<span>def <span class="ident">node_clique_number_nk</span></span>(<span>G, Gnk, nodes)</span>
 </code></dt>
 <dd>
 <div class="desc"></div>
@@ -797,13 +1022,17 @@ class NodesFeatures(Graph):
 <summary>
 <span>Expand source code</span>
 </summary>
-<pre><code class="python">def node_clique_number_nk(G, Gnk, nodes, cliques=None):
+<pre><code class="python">def node_clique_number_nk(G, Gnk, nodes):
     cliques = nk.clique.MaximalCliques(Gnk).run().getCliques()
-    d = {}
-    for n,v in zip(G.nodes, Gnk.iterNodes()):
-        if(n in nodes):
-            d[n] = max([len(c) for c in cliques if v in c])
-    return(d)</code></pre>
+    v = {}
+    for node in Gnk.iterNodes():
+        v[node] = 0
+
+    for clique in cliques:
+        l = len(clique)
+        for node in clique:
+            v[node] = max(v[node], l)
+    return(dictKeys(valuesDict(v.values(), G.nodes), nodes))</code></pre>
 </details>
 </dd>
 <dt id="BML.transform.nodes_features.number_of_cliques"><code class="name flex">
@@ -816,8 +1045,11 @@ class NodesFeatures(Graph):
 <span>Expand source code</span>
 </summary>
 <pre><code class="python">def number_of_cliques(G, nodes):
-    d = nx.number_of_cliques(G, nodes=nodes)
-    return(dictKeys(d,nodes))</code></pre>
+    if(nodes==G.nodes):
+        d = my_number_of_cliques(G)
+    else:
+        d = my_number_of_cliques(G, nodes=list(nodes))
+    return(dictKeys(d, nodes))</code></pre>
 </details>
 </dd>
 <dt id="BML.transform.nodes_features.number_of_cliques_nk"><code class="name flex">
@@ -920,7 +1152,7 @@ class NodesFeatures(Graph):
 </details>
 </dd>
 <dt id="BML.transform.nodes_features.run"><code class="name flex">
-<span>def <span class="ident">run</span></span>(<span>function, results, key, verbose, *args)</span>
+<span>def <span class="ident">run</span></span>(<span>function, results, key, logFiles, verbose, *args)</span>
 </code></dt>
 <dd>
 <div class="desc"></div>
@@ -928,13 +1160,17 @@ class NodesFeatures(Graph):
 <summary>
 <span>Expand source code</span>
 </summary>
-<pre><code class="python">def run(function, results, key, verbose,*args):
+<pre><code class="python">def run(function, results, key, logFiles, verbose,*args):
     if(verbose):
-        print(&#34;Start:%s&#34; % (key))
+        printAndLog(&#34;Start:%s&#34; % (key), logFiles)
     s = time.time()
-    results[key] = function(*args)
+    try:
+        results[key] = function(*args)
+    except Exception as e:
+        print(&#34;Error with feature: &#34; + key)
+        raise e
     if(verbose):
-        print(&#34;End:%s (%s)&#34; % (key, timeFormat(time.time()-s)))</code></pre>
+        printAndLog(&#34;End:%s (%s)&#34; % (key, timeFormat(time.time()-s)), logFiles)</code></pre>
 </details>
 </dd>
 <dt id="BML.transform.nodes_features.square_clustering"><code class="name flex">
@@ -1016,17 +1252,20 @@ class NodesFeatures(Graph):
         self.params[&#34;use_networkit&#34;] = True
         self.params[&#34;all_nodes&#34;] = True
         self.params[&#34;nodes&#34;] = None
-        self.params[&#34;exclude_features&#34;] = [&#34;load&#34;] # Excluded by default, too slow; ignored if include_features not empty
-        self.params[&#34;include_features&#34;] = [] # all features by default
+        self.params[&#34;exclude_features&#34;] = [] # Excluded by default
+        self.params[&#34;include_features&#34;] = [
+            &#39;degree&#39;, &#39;degree_centrality&#39;, &#39;average_neighbor_degree&#39;, &#39;node_clique_number&#39;, 
+            &#39;number_of_cliques&#39;, &#39;eigenvector&#39;, &#39;pagerank&#39;, &#39;clustering&#39;, &#39;triangles&#39;
+        ]
         self.params[&#34;verbose&#34;] = False
+        self.params[&#34;nbProcessFeatures&#34;] = multiprocessing.cpu_count()
 
         Graph.__init__(self, primingFile, dataFile, params, outFolder, logFiles)
-    
+
     def save(self):
         BaseTransform.save(self)
-    
-    def transforms(self, index, G):
-
+        
+    def getNodes(self, G):
         nodes = self.params[&#34;nodes&#34;]
 
         if(nodes is None):
@@ -1036,49 +1275,72 @@ class NodesFeatures(Graph):
                 G = nx.k_core(G, k, core_number)
 
             nodes = G.nodes
-
-        results = {}
-
-        features = {}
-        features[&#34;load&#34;] = (load, G, nodes) # slow
-        features[&#34;local_efficiency&#34;] = (local_efficiency, G, nodes)
-        features[&#34;harmonic&#34;] = (harmonic, G, nodes) # slow, but faster than harmonic_nk
-        features[&#34;degree&#34;] = (degree, G, nodes) # already fast with nx
-        features[&#34;degree_centrality&#34;] = (degree_centrality, G, nodes) # already fast with nx
-        features[&#34;square_clustering&#34;] = (square_clustering, G, nodes)
-        features[&#34;average_neighbor_degree&#34;] = (average_neighbor_degree, G, nodes)
-        features[&#34;betweenness&#34;] = (betweenness_subset, G, nodes) # faster than nx and nk betweeness
-
-        if(not self.params[&#34;use_networkit&#34;]):
-            features[&#34;closeness&#34;] = (closeness, G, nodes) 
-            features[&#34;eigenvector&#34;] = (eigenvector, G, nodes)
-            features[&#34;pagerank&#34;] = (pagerank, G, nodes)
-            features[&#34;number_of_cliques&#34;] = (number_of_cliques, G, nodes)
-            features[&#34;node_clique_number&#34;] = (node_clique_number, G, nodes)
-            features[&#34;clustering&#34;] = (clustering, G, nodes)
-            features[&#34;triangles&#34;] = (triangles, G, nodes)
-            features[&#34;eccentricity&#34;] = (eccentricity, G, nodes)
-            features[&#34;average_shortest_path_length&#34;] = (average_shortest_path_length, G, nodes)
-
-        features = removedExcludedFeatures(features, self.params[&#34;exclude_features&#34;], self.params[&#34;include_features&#34;])
-        results.update(computeFeaturesParallelized(features, self.params[&#34;nbProcess&#34;], self.params[&#34;verbose&#34;]))
-
+            
+        return(G, nodes)
+            
+    def getFeatures(self, G, nodes):
+        
+        features_nx = {}
+        features_nk = {}
+        
+        features_nx[&#34;load&#34;] = (load, G, nodes)
+        features_nx[&#34;degree&#34;] = (degree, G, nodes) # already fast with nx
+        features_nx[&#34;degree_centrality&#34;] = (degree_centrality, G, nodes) # already fast with nx
+        features_nx[&#34;square_clustering&#34;] = (square_clustering, G, nodes)
+        features_nx[&#34;average_neighbor_degree&#34;] = (average_neighbor_degree, G, nodes)
+        features_nx[&#34;node_clique_number&#34;] = (node_clique_number, G, nodes) # Fast with my fix
+        features_nx[&#34;number_of_cliques&#34;] = (number_of_cliques, G, nodes) # Fast with my fix
+        
         if(self.params[&#34;use_networkit&#34;]):
             Gnk = nx2nk(G)
+            features_nk[&#34;closeness&#34;] = (closeness_nk, G, Gnk, nodes)
+            features_nk[&#34;betweenness&#34;] = (betweenness_nk, G, Gnk, nodes)
+            features_nk[&#34;local_efficiency&#34;] = (local_efficiency_nk, G, Gnk, nodes)
+            features_nk[&#34;harmonic&#34;] = (harmonic_nk, G, Gnk, nodes) 
+            features_nk[&#34;eigenvector&#34;] = (eigenvector_nk, G, Gnk, nodes)
+            features_nk[&#34;pagerank&#34;] = (pagerank_nk, G, Gnk, nodes)
+            features_nk[&#34;clustering&#34;] = (clustering_nk, G, Gnk, nodes)
+            features_nk[&#34;triangles&#34;] = (triangles_nk, G, Gnk, nodes)
+            features_nk[&#34;eccentricity&#34;] = (eccentricity_nk, G, Gnk, nodes)
+            features_nk[&#34;average_shortest_path_length&#34;] = (average_shortest_path_length_nk, G, Gnk, nodes)
+        else:
+            features_nx[&#34;closeness&#34;] = (closeness, G, nodes) 
+            features_nx[&#34;betweenness&#34;] = (betweenness, G, nodes)
+            features_nx[&#34;local_efficiency&#34;] = (local_efficiency, G, nodes)
+            features_nx[&#34;harmonic&#34;] = (harmonic, G, nodes) 
+            features_nx[&#34;eigenvector&#34;] = (eigenvector, G, nodes)
+            features_nx[&#34;pagerank&#34;] = (pagerank, G, nodes)
+            features_nx[&#34;clustering&#34;] = (clustering, G, nodes)
+            features_nx[&#34;triangles&#34;] = (triangles, G, nodes)
+            features_nx[&#34;eccentricity&#34;] = (eccentricity, G, nodes)
+            features_nx[&#34;average_shortest_path_length&#34;] = (average_shortest_path_length, G, nodes)
+            
+        return(features_nx, features_nk)
+            
+    def computeFeatures(self, G, features_nx, features_nk):
+        
+        results = {}
+        
+        def func(results,features_nk,verbose):
+                results.update(computeFeatures(features_nk, self.logFiles, verbose))    
+        thread = threading.Thread(target=func, args=(results, features_nk, self.params[&#34;verbose&#34;]))
+        thread.start()
+        
+        results.update(computeFeaturesParallelized(features_nx, self.params[&#34;nbProcessFeatures&#34;], self.logFiles, self.params[&#34;verbose&#34;]))
+        thread.join()
+        
+        return(results)
 
-            features = {}
-            features[&#34;closeness&#34;] = (closeness_nk, G, Gnk, nodes)
-            features[&#34;eigenvector&#34;] = (eigenvector_nk, G, Gnk, nodes)
-            features[&#34;pagerank&#34;] = (pagerank_nk, G, Gnk, nodes)
-            features[&#34;number_of_cliques&#34;] = (number_of_cliques_nk, G, Gnk, nodes)
-            features[&#34;node_clique_number&#34;] = (node_clique_number_nk, G, Gnk, nodes)
-            features[&#34;clustering&#34;] = (clustering_nk, G, Gnk, nodes)
-            features[&#34;triangles&#34;] = (triangles_nk, G, Gnk, nodes)
-            features[&#34;eccentricity&#34;] = (eccentricity_nk, G, Gnk, nodes)
-            features[&#34;average_shortest_path_length&#34;] = (average_shortest_path_length_nk, G, Gnk, nodes)
+    def transforms(self, index, G):
+        
+        G, nodes = self.getNodes(G)
+        
+        features_nx, features_nk = self.getFeatures(G, nodes)
+        
+        features_nx = removedExcludedFeatures(features_nx, self.params[&#34;exclude_features&#34;], self.params[&#34;include_features&#34;])
+        features_nk = removedExcludedFeatures(features_nk, self.params[&#34;exclude_features&#34;], self.params[&#34;include_features&#34;])
 
-            features = removedExcludedFeatures(features, self.params[&#34;exclude_features&#34;], self.params[&#34;include_features&#34;])
-            results.update(computeFeatures(features, self.params[&#34;verbose&#34;]))
+        results = self.computeFeatures(G, features_nx, features_nk)
         
         return(results)</code></pre>
 </details>
@@ -1102,6 +1364,102 @@ class NodesFeatures(Graph):
 </dl>
 <h3>Methods</h3>
 <dl>
+<dt id="BML.transform.nodes_features.NodesFeatures.computeFeatures"><code class="name flex">
+<span>def <span class="ident">computeFeatures</span></span>(<span>self, G, features_nx, features_nk)</span>
+</code></dt>
+<dd>
+<div class="desc"></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def computeFeatures(self, G, features_nx, features_nk):
+    
+    results = {}
+    
+    def func(results,features_nk,verbose):
+            results.update(computeFeatures(features_nk, self.logFiles, verbose))    
+    thread = threading.Thread(target=func, args=(results, features_nk, self.params[&#34;verbose&#34;]))
+    thread.start()
+    
+    results.update(computeFeaturesParallelized(features_nx, self.params[&#34;nbProcessFeatures&#34;], self.logFiles, self.params[&#34;verbose&#34;]))
+    thread.join()
+    
+    return(results)</code></pre>
+</details>
+</dd>
+<dt id="BML.transform.nodes_features.NodesFeatures.getFeatures"><code class="name flex">
+<span>def <span class="ident">getFeatures</span></span>(<span>self, G, nodes)</span>
+</code></dt>
+<dd>
+<div class="desc"></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def getFeatures(self, G, nodes):
+    
+    features_nx = {}
+    features_nk = {}
+    
+    features_nx[&#34;load&#34;] = (load, G, nodes)
+    features_nx[&#34;degree&#34;] = (degree, G, nodes) # already fast with nx
+    features_nx[&#34;degree_centrality&#34;] = (degree_centrality, G, nodes) # already fast with nx
+    features_nx[&#34;square_clustering&#34;] = (square_clustering, G, nodes)
+    features_nx[&#34;average_neighbor_degree&#34;] = (average_neighbor_degree, G, nodes)
+    features_nx[&#34;node_clique_number&#34;] = (node_clique_number, G, nodes) # Fast with my fix
+    features_nx[&#34;number_of_cliques&#34;] = (number_of_cliques, G, nodes) # Fast with my fix
+    
+    if(self.params[&#34;use_networkit&#34;]):
+        Gnk = nx2nk(G)
+        features_nk[&#34;closeness&#34;] = (closeness_nk, G, Gnk, nodes)
+        features_nk[&#34;betweenness&#34;] = (betweenness_nk, G, Gnk, nodes)
+        features_nk[&#34;local_efficiency&#34;] = (local_efficiency_nk, G, Gnk, nodes)
+        features_nk[&#34;harmonic&#34;] = (harmonic_nk, G, Gnk, nodes) 
+        features_nk[&#34;eigenvector&#34;] = (eigenvector_nk, G, Gnk, nodes)
+        features_nk[&#34;pagerank&#34;] = (pagerank_nk, G, Gnk, nodes)
+        features_nk[&#34;clustering&#34;] = (clustering_nk, G, Gnk, nodes)
+        features_nk[&#34;triangles&#34;] = (triangles_nk, G, Gnk, nodes)
+        features_nk[&#34;eccentricity&#34;] = (eccentricity_nk, G, Gnk, nodes)
+        features_nk[&#34;average_shortest_path_length&#34;] = (average_shortest_path_length_nk, G, Gnk, nodes)
+    else:
+        features_nx[&#34;closeness&#34;] = (closeness, G, nodes) 
+        features_nx[&#34;betweenness&#34;] = (betweenness, G, nodes)
+        features_nx[&#34;local_efficiency&#34;] = (local_efficiency, G, nodes)
+        features_nx[&#34;harmonic&#34;] = (harmonic, G, nodes) 
+        features_nx[&#34;eigenvector&#34;] = (eigenvector, G, nodes)
+        features_nx[&#34;pagerank&#34;] = (pagerank, G, nodes)
+        features_nx[&#34;clustering&#34;] = (clustering, G, nodes)
+        features_nx[&#34;triangles&#34;] = (triangles, G, nodes)
+        features_nx[&#34;eccentricity&#34;] = (eccentricity, G, nodes)
+        features_nx[&#34;average_shortest_path_length&#34;] = (average_shortest_path_length, G, nodes)
+        
+    return(features_nx, features_nk)</code></pre>
+</details>
+</dd>
+<dt id="BML.transform.nodes_features.NodesFeatures.getNodes"><code class="name flex">
+<span>def <span class="ident">getNodes</span></span>(<span>self, G)</span>
+</code></dt>
+<dd>
+<div class="desc"></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def getNodes(self, G):
+    nodes = self.params[&#34;nodes&#34;]
+
+    if(nodes is None):
+        if(not self.params[&#34;all_nodes&#34;]):
+            core_number = nx.core_number(G)
+            k = np.percentile(list(core_number.values()),98)
+            G = nx.k_core(G, k, core_number)
+
+        nodes = G.nodes
+        
+    return(G, nodes)</code></pre>
+</details>
+</dd>
 <dt id="BML.transform.nodes_features.NodesFeatures.save"><code class="name flex">
 <span>def <span class="ident">save</span></span>(<span>self)</span>
 </code></dt>
@@ -1125,59 +1483,15 @@ class NodesFeatures(Graph):
 <span>Expand source code</span>
 </summary>
 <pre><code class="python">def transforms(self, index, G):
+    
+    G, nodes = self.getNodes(G)
+    
+    features_nx, features_nk = self.getFeatures(G, nodes)
+    
+    features_nx = removedExcludedFeatures(features_nx, self.params[&#34;exclude_features&#34;], self.params[&#34;include_features&#34;])
+    features_nk = removedExcludedFeatures(features_nk, self.params[&#34;exclude_features&#34;], self.params[&#34;include_features&#34;])
 
-    nodes = self.params[&#34;nodes&#34;]
-
-    if(nodes is None):
-        if(not self.params[&#34;all_nodes&#34;]):
-            core_number = nx.core_number(G)
-            k = np.percentile(list(core_number.values()),98)
-            G = nx.k_core(G, k, core_number)
-
-        nodes = G.nodes
-
-    results = {}
-
-    features = {}
-    features[&#34;load&#34;] = (load, G, nodes) # slow
-    features[&#34;local_efficiency&#34;] = (local_efficiency, G, nodes)
-    features[&#34;harmonic&#34;] = (harmonic, G, nodes) # slow, but faster than harmonic_nk
-    features[&#34;degree&#34;] = (degree, G, nodes) # already fast with nx
-    features[&#34;degree_centrality&#34;] = (degree_centrality, G, nodes) # already fast with nx
-    features[&#34;square_clustering&#34;] = (square_clustering, G, nodes)
-    features[&#34;average_neighbor_degree&#34;] = (average_neighbor_degree, G, nodes)
-    features[&#34;betweenness&#34;] = (betweenness_subset, G, nodes) # faster than nx and nk betweeness
-
-    if(not self.params[&#34;use_networkit&#34;]):
-        features[&#34;closeness&#34;] = (closeness, G, nodes) 
-        features[&#34;eigenvector&#34;] = (eigenvector, G, nodes)
-        features[&#34;pagerank&#34;] = (pagerank, G, nodes)
-        features[&#34;number_of_cliques&#34;] = (number_of_cliques, G, nodes)
-        features[&#34;node_clique_number&#34;] = (node_clique_number, G, nodes)
-        features[&#34;clustering&#34;] = (clustering, G, nodes)
-        features[&#34;triangles&#34;] = (triangles, G, nodes)
-        features[&#34;eccentricity&#34;] = (eccentricity, G, nodes)
-        features[&#34;average_shortest_path_length&#34;] = (average_shortest_path_length, G, nodes)
-
-    features = removedExcludedFeatures(features, self.params[&#34;exclude_features&#34;], self.params[&#34;include_features&#34;])
-    results.update(computeFeaturesParallelized(features, self.params[&#34;nbProcess&#34;], self.params[&#34;verbose&#34;]))
-
-    if(self.params[&#34;use_networkit&#34;]):
-        Gnk = nx2nk(G)
-
-        features = {}
-        features[&#34;closeness&#34;] = (closeness_nk, G, Gnk, nodes)
-        features[&#34;eigenvector&#34;] = (eigenvector_nk, G, Gnk, nodes)
-        features[&#34;pagerank&#34;] = (pagerank_nk, G, Gnk, nodes)
-        features[&#34;number_of_cliques&#34;] = (number_of_cliques_nk, G, Gnk, nodes)
-        features[&#34;node_clique_number&#34;] = (node_clique_number_nk, G, Gnk, nodes)
-        features[&#34;clustering&#34;] = (clustering_nk, G, Gnk, nodes)
-        features[&#34;triangles&#34;] = (triangles_nk, G, Gnk, nodes)
-        features[&#34;eccentricity&#34;] = (eccentricity_nk, G, Gnk, nodes)
-        features[&#34;average_shortest_path_length&#34;] = (average_shortest_path_length_nk, G, Gnk, nodes)
-
-        features = removedExcludedFeatures(features, self.params[&#34;exclude_features&#34;], self.params[&#34;include_features&#34;])
-        results.update(computeFeatures(features, self.params[&#34;verbose&#34;]))
+    results = self.computeFeatures(G, features_nx, features_nk)
     
     return(results)</code></pre>
 </details>
@@ -1248,14 +1562,12 @@ setTimeout(() => input.focus(), 100);
 </li>
 <li><h3><a href="#header-functions">Functions</a></h3>
 <ul class="">
-<li><code><a title="BML.transform.nodes_features.approx_betweenness_nk" href="#BML.transform.nodes_features.approx_betweenness_nk">approx_betweenness_nk</a></code></li>
 <li><code><a title="BML.transform.nodes_features.approx_closeness_nk" href="#BML.transform.nodes_features.approx_closeness_nk">approx_closeness_nk</a></code></li>
 <li><code><a title="BML.transform.nodes_features.average_neighbor_degree" href="#BML.transform.nodes_features.average_neighbor_degree">average_neighbor_degree</a></code></li>
 <li><code><a title="BML.transform.nodes_features.average_shortest_path_length" href="#BML.transform.nodes_features.average_shortest_path_length">average_shortest_path_length</a></code></li>
 <li><code><a title="BML.transform.nodes_features.average_shortest_path_length_nk" href="#BML.transform.nodes_features.average_shortest_path_length_nk">average_shortest_path_length_nk</a></code></li>
 <li><code><a title="BML.transform.nodes_features.betweenness" href="#BML.transform.nodes_features.betweenness">betweenness</a></code></li>
 <li><code><a title="BML.transform.nodes_features.betweenness_nk" href="#BML.transform.nodes_features.betweenness_nk">betweenness_nk</a></code></li>
-<li><code><a title="BML.transform.nodes_features.betweenness_subset" href="#BML.transform.nodes_features.betweenness_subset">betweenness_subset</a></code></li>
 <li><code><a title="BML.transform.nodes_features.closeness" href="#BML.transform.nodes_features.closeness">closeness</a></code></li>
 <li><code><a title="BML.transform.nodes_features.closeness_nk" href="#BML.transform.nodes_features.closeness_nk">closeness_nk</a></code></li>
 <li><code><a title="BML.transform.nodes_features.clustering" href="#BML.transform.nodes_features.clustering">clustering</a></code></li>
@@ -1271,10 +1583,14 @@ setTimeout(() => input.focus(), 100);
 <li><code><a title="BML.transform.nodes_features.eccentricity_nk" href="#BML.transform.nodes_features.eccentricity_nk">eccentricity_nk</a></code></li>
 <li><code><a title="BML.transform.nodes_features.eigenvector" href="#BML.transform.nodes_features.eigenvector">eigenvector</a></code></li>
 <li><code><a title="BML.transform.nodes_features.eigenvector_nk" href="#BML.transform.nodes_features.eigenvector_nk">eigenvector_nk</a></code></li>
+<li><code><a title="BML.transform.nodes_features.global_efficiency_nk" href="#BML.transform.nodes_features.global_efficiency_nk">global_efficiency_nk</a></code></li>
 <li><code><a title="BML.transform.nodes_features.harmonic" href="#BML.transform.nodes_features.harmonic">harmonic</a></code></li>
 <li><code><a title="BML.transform.nodes_features.harmonic_nk" href="#BML.transform.nodes_features.harmonic_nk">harmonic_nk</a></code></li>
 <li><code><a title="BML.transform.nodes_features.load" href="#BML.transform.nodes_features.load">load</a></code></li>
 <li><code><a title="BML.transform.nodes_features.local_efficiency" href="#BML.transform.nodes_features.local_efficiency">local_efficiency</a></code></li>
+<li><code><a title="BML.transform.nodes_features.local_efficiency_nk" href="#BML.transform.nodes_features.local_efficiency_nk">local_efficiency_nk</a></code></li>
+<li><code><a title="BML.transform.nodes_features.my_node_clique_number" href="#BML.transform.nodes_features.my_node_clique_number">my_node_clique_number</a></code></li>
+<li><code><a title="BML.transform.nodes_features.my_number_of_cliques" href="#BML.transform.nodes_features.my_number_of_cliques">my_number_of_cliques</a></code></li>
 <li><code><a title="BML.transform.nodes_features.node_clique_number" href="#BML.transform.nodes_features.node_clique_number">node_clique_number</a></code></li>
 <li><code><a title="BML.transform.nodes_features.node_clique_number_nk" href="#BML.transform.nodes_features.node_clique_number_nk">node_clique_number_nk</a></code></li>
 <li><code><a title="BML.transform.nodes_features.number_of_cliques" href="#BML.transform.nodes_features.number_of_cliques">number_of_cliques</a></code></li>
@@ -1295,8 +1611,11 @@ setTimeout(() => input.focus(), 100);
 <ul>
 <li>
 <h4><code><a title="BML.transform.nodes_features.NodesFeatures" href="#BML.transform.nodes_features.NodesFeatures">NodesFeatures</a></code></h4>
-<ul class="">
+<ul class="two-column">
+<li><code><a title="BML.transform.nodes_features.NodesFeatures.computeFeatures" href="#BML.transform.nodes_features.NodesFeatures.computeFeatures">computeFeatures</a></code></li>
 <li><code><a title="BML.transform.nodes_features.NodesFeatures.fileExtension" href="#BML.transform.nodes_features.NodesFeatures.fileExtension">fileExtension</a></code></li>
+<li><code><a title="BML.transform.nodes_features.NodesFeatures.getFeatures" href="#BML.transform.nodes_features.NodesFeatures.getFeatures">getFeatures</a></code></li>
+<li><code><a title="BML.transform.nodes_features.NodesFeatures.getNodes" href="#BML.transform.nodes_features.NodesFeatures.getNodes">getNodes</a></code></li>
 <li><code><a title="BML.transform.nodes_features.NodesFeatures.save" href="#BML.transform.nodes_features.NodesFeatures.save">save</a></code></li>
 <li><code><a title="BML.transform.nodes_features.NodesFeatures.transforms" href="#BML.transform.nodes_features.NodesFeatures.transforms">transforms</a></code></li>
 </ul>
