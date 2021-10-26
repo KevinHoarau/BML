@@ -1,6 +1,6 @@
 from .base_transform import BaseTransform, BaseTransformParallelized
 from .features import Features
-from .graph import Graph, WeightedGraph
+from .graph import Graph
 from .nodes_features import NodesFeatures
 from .graph_features import GraphFeatures
 from .routes_features import RoutesFeatures

@@ -60,7 +60,11 @@ class ProcessingQueue(object):
                 if(self.processes[i] is None or not self.processes[i].is_alive()):
                     return
             time.sleep(1)
-
+            
+    def join(self):
+        for i in range(self.nbProcess):
+            if(not self.processes[i] is None):
+                self.processes[i].join()
 
     def run(self, logFilePath=""):
         """Summary

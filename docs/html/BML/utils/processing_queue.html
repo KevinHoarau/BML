@@ -88,7 +88,11 @@ class ProcessingQueue(object):
                 if(self.processes[i] is None or not self.processes[i].is_alive()):
                     return
             time.sleep(1)
-
+            
+    def join(self):
+        for i in range(self.nbProcess):
+            if(not self.processes[i] is None):
+                self.processes[i].join()
 
     def run(self, logFilePath=&#34;&#34;):
         &#34;&#34;&#34;Summary
@@ -295,7 +299,11 @@ class ProcessingQueue(object):
                 if(self.processes[i] is None or not self.processes[i].is_alive()):
                     return
             time.sleep(1)
-
+            
+    def join(self):
+        for i in range(self.nbProcess):
+            if(not self.processes[i] is None):
+                self.processes[i].join()
 
     def run(self, logFilePath=&#34;&#34;):
         &#34;&#34;&#34;Summary
@@ -491,6 +499,21 @@ class ProcessingQueue(object):
     log += vline
 
     return(log)</code></pre>
+</details>
+</dd>
+<dt id="BML.utils.processing_queue.ProcessingQueue.join"><code class="name flex">
+<span>def <span class="ident">join</span></span>(<span>self)</span>
+</code></dt>
+<dd>
+<div class="desc"></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def join(self):
+    for i in range(self.nbProcess):
+        if(not self.processes[i] is None):
+            self.processes[i].join()</code></pre>
 </details>
 </dd>
 <dt id="BML.utils.processing_queue.ProcessingQueue.run"><code class="name flex">
@@ -714,6 +737,7 @@ setTimeout(() => input.focus(), 100);
 <ul class="two-column">
 <li><code><a title="BML.utils.processing_queue.ProcessingQueue.addProcess" href="#BML.utils.processing_queue.ProcessingQueue.addProcess">addProcess</a></code></li>
 <li><code><a title="BML.utils.processing_queue.ProcessingQueue.formatLog" href="#BML.utils.processing_queue.ProcessingQueue.formatLog">formatLog</a></code></li>
+<li><code><a title="BML.utils.processing_queue.ProcessingQueue.join" href="#BML.utils.processing_queue.ProcessingQueue.join">join</a></code></li>
 <li><code><a title="BML.utils.processing_queue.ProcessingQueue.run" href="#BML.utils.processing_queue.ProcessingQueue.run">run</a></code></li>
 <li><code><a title="BML.utils.processing_queue.ProcessingQueue.runLog" href="#BML.utils.processing_queue.ProcessingQueue.runLog">runLog</a></code></li>
 <li><code><a title="BML.utils.processing_queue.ProcessingQueue.runOnce" href="#BML.utils.processing_queue.ProcessingQueue.runOnce">runOnce</a></code></li>

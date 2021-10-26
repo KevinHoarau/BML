@@ -27,6 +27,7 @@
 <span>Expand source code</span>
 </summary>
 <pre><code class="python">from BML.transform import BaseTransform, BaseTransformParallelized
+from BML.utils import ProcessingQueue
 
 import networkit as nk
 import networkx as nx
@@ -35,9 +36,7 @@ import ipaddress as ip
 import numpy as np
 import pandas as pd
 
-import multiprocessing
-
-import pickle
+import multiprocessing, pickle, time
 
 def buildWeightedGraph(routes):
 
@@ -127,7 +126,6 @@ def buildGraph(routes):
 
     return(G)
 
-
 class Graph(BaseTransformParallelized):
     
     computeUpdates = False
@@ -137,10 +135,32 @@ class Graph(BaseTransformParallelized):
     def __init__(self, primingFile, dataFile, params, outFolder, logFiles):
 
         BaseTransformParallelized.__init__(self, primingFile, dataFile, params, outFolder, logFiles)
+        self.prevT = 0
+
+    def computeSnapshot(self, t, routes, updatesParsed):
         
-    def runTransforms(self, data, index, routes, updates):
+        self.pq.waitUntilFree()
+        self.pq.addProcess(target=self.runBuildGraph, args=(self.data, t, routes))
+        self.pq.runOnce()
+        
+        if(t!=0 and t%self.params[&#34;nbProcess&#34;]==0 or t+1==self.T):
+            
+            self.pq.join()
+            
+            for i in range(self.prevT,t+1):
+                self.pq.waitUntilFree()
+                self.pq.addProcess(target=self.runTransforms, args=(self.data, i, self.data[i]))
+                self.pq.runOnce()
+            
+            self.prevT = t+1
+            
+    def runBuildGraph(self, data, index, routes):
         G = buildGraph(routes)
+        data[index] = G
         del routes
+        return(None)
+    
+    def runTransforms(self, data, index, G):
         data[index] = self.transforms(index, G)
         del G
         return(None)
@@ -151,143 +171,7 @@ class Graph(BaseTransformParallelized):
         self.log(&#34;saved&#34;)
 
     def transforms(self, index, G):
-        return(G)
-
-def getWeightedSubgraph(routes, keys, graphlist, index):
-
-    graph = {
-        &#34;edges&#34; : {},
-        &#34;nodes&#34; : {}
-        }
-
-    try:
-
-        for prefix in keys:
-
-            nbIp = ip.ip_network(prefix).num_addresses
-
-            vertices = []
-            edges = []
-
-            for collector in routes[prefix].keys():
-                
-                for peer in routes[prefix][collector].keys():
-                    path = routes[prefix][collector][peer]
-
-                    if(path != None):
-
-                        if(&#39;{&#39; in path or &#39;}&#39; in path):
-                            pass
-                        else:
-
-                            path_vertices = path.split(&#39; &#39;)
-                            vertices += path_vertices
-
-                            for i in range(len(path_vertices)-1):
-                                a,b = (path_vertices[i], path_vertices[i+1])
-                                if(a!=b):
-                                    edges.append((a,b))
-
-            for v in set(vertices):
-                if(v!=&#34;&#34;):
-                    if(not v in graph[&#34;nodes&#34;]):
-                        graph[&#34;nodes&#34;][v] = {}
-                        graph[&#34;nodes&#34;][v][&#34;nb_ip&#34;] = 0
-                        graph[&#34;nodes&#34;][v][&#34;nb_prefix&#34;] = 0
-
-                    graph[&#34;nodes&#34;][v][&#34;nb_ip&#34;] += nbIp
-                    graph[&#34;nodes&#34;][v][&#34;nb_prefix&#34;] += 1
-
-            for e in set(edges):
-                a,b=e
-                if(a!=&#34;&#34; and b!=&#34;&#34;):
-                    if(not e in graph[&#34;edges&#34;]):
-                        graph[&#34;edges&#34;][e] = {}
-                        graph[&#34;edges&#34;][e][&#34;nb_ip&#34;] = 0
-                        graph[&#34;edges&#34;][e][&#34;nb_prefix&#34;] = 0
-
-                    graph[&#34;edges&#34;][e][&#34;nb_ip&#34;] += nbIp
-                    graph[&#34;edges&#34;][e][&#34;nb_prefix&#34;] += 1
-
-        graph[&#34;nodes&#34;] = pd.DataFrame(graph[&#34;nodes&#34;])
-        graph[&#34;edges&#34;] = pd.DataFrame(graph[&#34;edges&#34;])
-
-        graphlist[index] = graph
-
-    except KeyboardInterrupt:
-        pass
-
-def buildWeightedGraphParallelized(routes, nbProcess=16):
-
-    G =  nx.DiGraph()
-
-    manager = multiprocessing.Manager()
-    graphlist = manager.dict()
-
-    keys = [*routes.keys()]
-    jobs = []
-    try:
-        for i in range(nbProcess):
-            p = multiprocessing.Process(target=getWeightedSubgraph, args=(routes, keys[i::nbProcess], graphlist, i))
-            jobs.append(p)
-            p.start()
-        for p in jobs:
-            p.join()
-            p.close()
-
-    except KeyboardInterrupt:
-        print(&#34;buildGraphParallelized: terminate running jobs&#34;)
-        for p in jobs:
-            p.terminate()
-            p.join()
-            p.close()
-        print(&#34;buildGraphParallelized: done&#34;)
-
-    nodes = [graphlist[i][&#34;nodes&#34;] for i in range(len(graphlist))]
-    edges = [graphlist[i][&#34;edges&#34;] for i in range(len(graphlist))]
-
-    nodes = pd.concat(nodes).groupby(level=0).sum()
-    edges = pd.concat(edges).groupby(level=0).sum()
-
-    for n in nodes:
-        G.add_node(int(n), nb_ip=int(nodes[n][&#34;nb_ip&#34;]), nb_prefix=int(nodes[n][&#34;nb_prefix&#34;]), ASN=int(n))
-
-    for e in edges:
-        a,b = e
-        G.add_edge(int(a), int(b), nb_ip=int(edges[e][&#34;nb_ip&#34;]), nb_prefix=int(edges[e][&#34;nb_prefix&#34;]))
-    
-    return(G)
-
-class WeightedGraph(BaseTransformParallelized):
-
-    def __init__(self):
-
-        BaseTransformParallelized.__init__(self)
-        self.params[&#34;nbProcessGraph&#34;] = multiprocessing.cpu_count()
-
-    def computeSnapshot(self, t, routes, updatesParsed):
-        self.pq.waitUntilFree()
-        G = buildWeightedGraphParallelized(routes, self.params[&#34;nbProcessGraph&#34;])
-        self.pq.addProcess(target=self.runTransforms, args=(self.data, t, G))
-        if(t%self.params[&#34;nbProcess&#34;]==self.params[&#34;nbProcess&#34;]-1):
-            self.pq.runOnce()
-
-    def runTransforms(self, data, index, G):
-        data[index] = self.transforms(index, G)
-        del G
-        return(None)
-
-    def transforms(self, index, G):
-
-        G = nx.convert_node_labels_to_integers(G)
-        
-        graphData = {
-            &#34;edge_data&#34;: list(G.edges.data()),
-            &#34;node_data&#34;: list(G.nodes.data())
-
-        }
-
-        return(graphData)</code></pre>
+        return(G)</code></pre>
 </details>
 </section>
 <section>
@@ -405,131 +289,6 @@ class WeightedGraph(BaseTransformParallelized):
     return(graph)</code></pre>
 </details>
 </dd>
-<dt id="BML.transform.graph.buildWeightedGraphParallelized"><code class="name flex">
-<span>def <span class="ident">buildWeightedGraphParallelized</span></span>(<span>routes, nbProcess=16)</span>
-</code></dt>
-<dd>
-<div class="desc"></div>
-<details class="source">
-<summary>
-<span>Expand source code</span>
-</summary>
-<pre><code class="python">def buildWeightedGraphParallelized(routes, nbProcess=16):
-
-    G =  nx.DiGraph()
-
-    manager = multiprocessing.Manager()
-    graphlist = manager.dict()
-
-    keys = [*routes.keys()]
-    jobs = []
-    try:
-        for i in range(nbProcess):
-            p = multiprocessing.Process(target=getWeightedSubgraph, args=(routes, keys[i::nbProcess], graphlist, i))
-            jobs.append(p)
-            p.start()
-        for p in jobs:
-            p.join()
-            p.close()
-
-    except KeyboardInterrupt:
-        print(&#34;buildGraphParallelized: terminate running jobs&#34;)
-        for p in jobs:
-            p.terminate()
-            p.join()
-            p.close()
-        print(&#34;buildGraphParallelized: done&#34;)
-
-    nodes = [graphlist[i][&#34;nodes&#34;] for i in range(len(graphlist))]
-    edges = [graphlist[i][&#34;edges&#34;] for i in range(len(graphlist))]
-
-    nodes = pd.concat(nodes).groupby(level=0).sum()
-    edges = pd.concat(edges).groupby(level=0).sum()
-
-    for n in nodes:
-        G.add_node(int(n), nb_ip=int(nodes[n][&#34;nb_ip&#34;]), nb_prefix=int(nodes[n][&#34;nb_prefix&#34;]), ASN=int(n))
-
-    for e in edges:
-        a,b = e
-        G.add_edge(int(a), int(b), nb_ip=int(edges[e][&#34;nb_ip&#34;]), nb_prefix=int(edges[e][&#34;nb_prefix&#34;]))
-    
-    return(G)</code></pre>
-</details>
-</dd>
-<dt id="BML.transform.graph.getWeightedSubgraph"><code class="name flex">
-<span>def <span class="ident">getWeightedSubgraph</span></span>(<span>routes, keys, graphlist, index)</span>
-</code></dt>
-<dd>
-<div class="desc"></div>
-<details class="source">
-<summary>
-<span>Expand source code</span>
-</summary>
-<pre><code class="python">def getWeightedSubgraph(routes, keys, graphlist, index):
-
-    graph = {
-        &#34;edges&#34; : {},
-        &#34;nodes&#34; : {}
-        }
-
-    try:
-
-        for prefix in keys:
-
-            nbIp = ip.ip_network(prefix).num_addresses
-
-            vertices = []
-            edges = []
-
-            for collector in routes[prefix].keys():
-                
-                for peer in routes[prefix][collector].keys():
-                    path = routes[prefix][collector][peer]
-
-                    if(path != None):
-
-                        if(&#39;{&#39; in path or &#39;}&#39; in path):
-                            pass
-                        else:
-
-                            path_vertices = path.split(&#39; &#39;)
-                            vertices += path_vertices
-
-                            for i in range(len(path_vertices)-1):
-                                a,b = (path_vertices[i], path_vertices[i+1])
-                                if(a!=b):
-                                    edges.append((a,b))
-
-            for v in set(vertices):
-                if(v!=&#34;&#34;):
-                    if(not v in graph[&#34;nodes&#34;]):
-                        graph[&#34;nodes&#34;][v] = {}
-                        graph[&#34;nodes&#34;][v][&#34;nb_ip&#34;] = 0
-                        graph[&#34;nodes&#34;][v][&#34;nb_prefix&#34;] = 0
-
-                    graph[&#34;nodes&#34;][v][&#34;nb_ip&#34;] += nbIp
-                    graph[&#34;nodes&#34;][v][&#34;nb_prefix&#34;] += 1
-
-            for e in set(edges):
-                a,b=e
-                if(a!=&#34;&#34; and b!=&#34;&#34;):
-                    if(not e in graph[&#34;edges&#34;]):
-                        graph[&#34;edges&#34;][e] = {}
-                        graph[&#34;edges&#34;][e][&#34;nb_ip&#34;] = 0
-                        graph[&#34;edges&#34;][e][&#34;nb_prefix&#34;] = 0
-
-                    graph[&#34;edges&#34;][e][&#34;nb_ip&#34;] += nbIp
-                    graph[&#34;edges&#34;][e][&#34;nb_prefix&#34;] += 1
-
-        graph[&#34;nodes&#34;] = pd.DataFrame(graph[&#34;nodes&#34;])
-        graph[&#34;edges&#34;] = pd.DataFrame(graph[&#34;edges&#34;])
-
-        graphlist[index] = graph
-
-    except KeyboardInterrupt:
-        pass</code></pre>
-</details>
-</dd>
 </dl>
 </section>
 <section>
@@ -554,10 +313,32 @@ class WeightedGraph(BaseTransformParallelized):
     def __init__(self, primingFile, dataFile, params, outFolder, logFiles):
 
         BaseTransformParallelized.__init__(self, primingFile, dataFile, params, outFolder, logFiles)
+        self.prevT = 0
+
+    def computeSnapshot(self, t, routes, updatesParsed):
         
-    def runTransforms(self, data, index, routes, updates):
+        self.pq.waitUntilFree()
+        self.pq.addProcess(target=self.runBuildGraph, args=(self.data, t, routes))
+        self.pq.runOnce()
+        
+        if(t!=0 and t%self.params[&#34;nbProcess&#34;]==0 or t+1==self.T):
+            
+            self.pq.join()
+            
+            for i in range(self.prevT,t+1):
+                self.pq.waitUntilFree()
+                self.pq.addProcess(target=self.runTransforms, args=(self.data, i, self.data[i]))
+                self.pq.runOnce()
+            
+            self.prevT = t+1
+            
+    def runBuildGraph(self, data, index, routes):
         G = buildGraph(routes)
+        data[index] = G
         del routes
+        return(None)
+    
+    def runTransforms(self, data, index, G):
         data[index] = self.transforms(index, G)
         del G
         return(None)
@@ -593,8 +374,8 @@ class WeightedGraph(BaseTransformParallelized):
 </dl>
 <h3>Methods</h3>
 <dl>
-<dt id="BML.transform.graph.Graph.runTransforms"><code class="name flex">
-<span>def <span class="ident">runTransforms</span></span>(<span>self, data, index, routes, updates)</span>
+<dt id="BML.transform.graph.Graph.computeSnapshot"><code class="name flex">
+<span>def <span class="ident">computeSnapshot</span></span>(<span>self, t, routes, updatesParsed)</span>
 </code></dt>
 <dd>
 <div class="desc"></div>
@@ -602,9 +383,50 @@ class WeightedGraph(BaseTransformParallelized):
 <summary>
 <span>Expand source code</span>
 </summary>
-<pre><code class="python">def runTransforms(self, data, index, routes, updates):
+<pre><code class="python">def computeSnapshot(self, t, routes, updatesParsed):
+    
+    self.pq.waitUntilFree()
+    self.pq.addProcess(target=self.runBuildGraph, args=(self.data, t, routes))
+    self.pq.runOnce()
+    
+    if(t!=0 and t%self.params[&#34;nbProcess&#34;]==0 or t+1==self.T):
+        
+        self.pq.join()
+        
+        for i in range(self.prevT,t+1):
+            self.pq.waitUntilFree()
+            self.pq.addProcess(target=self.runTransforms, args=(self.data, i, self.data[i]))
+            self.pq.runOnce()
+        
+        self.prevT = t+1</code></pre>
+</details>
+</dd>
+<dt id="BML.transform.graph.Graph.runBuildGraph"><code class="name flex">
+<span>def <span class="ident">runBuildGraph</span></span>(<span>self, data, index, routes)</span>
+</code></dt>
+<dd>
+<div class="desc"></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def runBuildGraph(self, data, index, routes):
     G = buildGraph(routes)
+    data[index] = G
     del routes
+    return(None)</code></pre>
+</details>
+</dd>
+<dt id="BML.transform.graph.Graph.runTransforms"><code class="name flex">
+<span>def <span class="ident">runTransforms</span></span>(<span>self, data, index, G)</span>
+</code></dt>
+<dd>
+<div class="desc"></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def runTransforms(self, data, index, G):
     data[index] = self.transforms(index, G)
     del G
     return(None)</code></pre>
@@ -636,110 +458,6 @@ class WeightedGraph(BaseTransformParallelized):
 </summary>
 <pre><code class="python">def transforms(self, index, G):
     return(G)</code></pre>
-</details>
-</dd>
-</dl>
-</dd>
-<dt id="BML.transform.graph.WeightedGraph"><code class="flex name class">
-<span>class <span class="ident">WeightedGraph</span></span>
-</code></dt>
-<dd>
-<div class="desc"></div>
-<details class="source">
-<summary>
-<span>Expand source code</span>
-</summary>
-<pre><code class="python">class WeightedGraph(BaseTransformParallelized):
-
-    def __init__(self):
-
-        BaseTransformParallelized.__init__(self)
-        self.params[&#34;nbProcessGraph&#34;] = multiprocessing.cpu_count()
-
-    def computeSnapshot(self, t, routes, updatesParsed):
-        self.pq.waitUntilFree()
-        G = buildWeightedGraphParallelized(routes, self.params[&#34;nbProcessGraph&#34;])
-        self.pq.addProcess(target=self.runTransforms, args=(self.data, t, G))
-        if(t%self.params[&#34;nbProcess&#34;]==self.params[&#34;nbProcess&#34;]-1):
-            self.pq.runOnce()
-
-    def runTransforms(self, data, index, G):
-        data[index] = self.transforms(index, G)
-        del G
-        return(None)
-
-    def transforms(self, index, G):
-
-        G = nx.convert_node_labels_to_integers(G)
-        
-        graphData = {
-            &#34;edge_data&#34;: list(G.edges.data()),
-            &#34;node_data&#34;: list(G.nodes.data())
-
-        }
-
-        return(graphData)</code></pre>
-</details>
-<h3>Ancestors</h3>
-<ul class="hlist">
-<li><a title="BML.transform.base_transform.BaseTransformParallelized" href="base_transform.html#BML.transform.base_transform.BaseTransformParallelized">BaseTransformParallelized</a></li>
-<li><a title="BML.transform.base_transform.BaseTransform" href="base_transform.html#BML.transform.base_transform.BaseTransform">BaseTransform</a></li>
-<li><a title="BML.utils.bml_process.BmlProcess" href="../utils/bml_process.html#BML.utils.bml_process.BmlProcess">BmlProcess</a></li>
-</ul>
-<h3>Methods</h3>
-<dl>
-<dt id="BML.transform.graph.WeightedGraph.computeSnapshot"><code class="name flex">
-<span>def <span class="ident">computeSnapshot</span></span>(<span>self, t, routes, updatesParsed)</span>
-</code></dt>
-<dd>
-<div class="desc"></div>
-<details class="source">
-<summary>
-<span>Expand source code</span>
-</summary>
-<pre><code class="python">def computeSnapshot(self, t, routes, updatesParsed):
-    self.pq.waitUntilFree()
-    G = buildWeightedGraphParallelized(routes, self.params[&#34;nbProcessGraph&#34;])
-    self.pq.addProcess(target=self.runTransforms, args=(self.data, t, G))
-    if(t%self.params[&#34;nbProcess&#34;]==self.params[&#34;nbProcess&#34;]-1):
-        self.pq.runOnce()</code></pre>
-</details>
-</dd>
-<dt id="BML.transform.graph.WeightedGraph.runTransforms"><code class="name flex">
-<span>def <span class="ident">runTransforms</span></span>(<span>self, data, index, G)</span>
-</code></dt>
-<dd>
-<div class="desc"></div>
-<details class="source">
-<summary>
-<span>Expand source code</span>
-</summary>
-<pre><code class="python">def runTransforms(self, data, index, G):
-    data[index] = self.transforms(index, G)
-    del G
-    return(None)</code></pre>
-</details>
-</dd>
-<dt id="BML.transform.graph.WeightedGraph.transforms"><code class="name flex">
-<span>def <span class="ident">transforms</span></span>(<span>self, index, G)</span>
-</code></dt>
-<dd>
-<div class="desc"></div>
-<details class="source">
-<summary>
-<span>Expand source code</span>
-</summary>
-<pre><code class="python">def transforms(self, index, G):
-
-    G = nx.convert_node_labels_to_integers(G)
-    
-    graphData = {
-        &#34;edge_data&#34;: list(G.edges.data()),
-        &#34;node_data&#34;: list(G.nodes.data())
-
-    }
-
-    return(graphData)</code></pre>
 </details>
 </dd>
 </dl>
@@ -810,28 +528,20 @@ setTimeout(() => input.focus(), 100);
 <ul class="">
 <li><code><a title="BML.transform.graph.buildGraph" href="#BML.transform.graph.buildGraph">buildGraph</a></code></li>
 <li><code><a title="BML.transform.graph.buildWeightedGraph" href="#BML.transform.graph.buildWeightedGraph">buildWeightedGraph</a></code></li>
-<li><code><a title="BML.transform.graph.buildWeightedGraphParallelized" href="#BML.transform.graph.buildWeightedGraphParallelized">buildWeightedGraphParallelized</a></code></li>
-<li><code><a title="BML.transform.graph.getWeightedSubgraph" href="#BML.transform.graph.getWeightedSubgraph">getWeightedSubgraph</a></code></li>
 </ul>
 </li>
 <li><h3><a href="#header-classes">Classes</a></h3>
 <ul>
 <li>
 <h4><code><a title="BML.transform.graph.Graph" href="#BML.transform.graph.Graph">Graph</a></code></h4>
-<ul class="">
+<ul class="two-column">
+<li><code><a title="BML.transform.graph.Graph.computeSnapshot" href="#BML.transform.graph.Graph.computeSnapshot">computeSnapshot</a></code></li>
 <li><code><a title="BML.transform.graph.Graph.computeUpdates" href="#BML.transform.graph.Graph.computeUpdates">computeUpdates</a></code></li>
 <li><code><a title="BML.transform.graph.Graph.fileExtension" href="#BML.transform.graph.Graph.fileExtension">fileExtension</a></code></li>
+<li><code><a title="BML.transform.graph.Graph.runBuildGraph" href="#BML.transform.graph.Graph.runBuildGraph">runBuildGraph</a></code></li>
 <li><code><a title="BML.transform.graph.Graph.runTransforms" href="#BML.transform.graph.Graph.runTransforms">runTransforms</a></code></li>
 <li><code><a title="BML.transform.graph.Graph.save" href="#BML.transform.graph.Graph.save">save</a></code></li>
 <li><code><a title="BML.transform.graph.Graph.transforms" href="#BML.transform.graph.Graph.transforms">transforms</a></code></li>
-</ul>
-</li>
-<li>
-<h4><code><a title="BML.transform.graph.WeightedGraph" href="#BML.transform.graph.WeightedGraph">WeightedGraph</a></code></h4>
-<ul class="">
-<li><code><a title="BML.transform.graph.WeightedGraph.computeSnapshot" href="#BML.transform.graph.WeightedGraph.computeSnapshot">computeSnapshot</a></code></li>
-<li><code><a title="BML.transform.graph.WeightedGraph.runTransforms" href="#BML.transform.graph.WeightedGraph.runTransforms">runTransforms</a></code></li>
-<li><code><a title="BML.transform.graph.WeightedGraph.transforms" href="#BML.transform.graph.WeightedGraph.transforms">transforms</a></code></li>
 </ul>
 </li>
 </ul>

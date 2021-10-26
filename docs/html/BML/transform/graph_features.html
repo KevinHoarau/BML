@@ -30,6 +30,7 @@
 from BML.utils import timeFormat
 from BML.transform.nodes_features import *
 
+import multiprocessing
 import networkit as nk
 import networkx as nx
 
@@ -53,46 +54,12 @@ def diameter(G, nodes):
 def assortativity(G, nodes):
     return(np.float64(nx.degree_assortativity_coefficient(G)))
 
-def largest_eigenvalue(G, nodes, adjacency_eigenvalues=None):
-    if(adjacency_eigenvalues is None):
-        adjacency_eigenvalues = np.real(nx.adjacency_spectrum(G))
-    return(np.float64(max(adjacency_eigenvalues)))
-
-def algebraic_connectivity(G, nodes):
-    ac = nx.algebraic_connectivity(G)
-    return(np.float64(ac))
-
-def symmetry_ratio(G, nodes, adjacency_eigenvalues=None):
-    if(adjacency_eigenvalues is None):
-        adjacency_eigenvalues = np.real(nx.adjacency_spectrum(G))
-    r = len(np.unique(adjacency_eigenvalues))/(diameter(G, nodes)+1)
-    return(np.float64(r))
-
-def natural_connectivity(G, nodes, adjacency_eigenvalues=None):
-    if(adjacency_eigenvalues is None):
-        adjacency_eigenvalues = np.real(nx.adjacency_spectrum(G))
-    nc = np.log(np.mean(np.exp(adjacency_eigenvalues)))
-    return(np.float64(nc))
-
-def weighted_spectrum(G, nodes, normalized_laplacian_eigenvalues=None, n=3):
-    if(normalized_laplacian_eigenvalues is None):
-        normalized_laplacian_eigenvalues = np.real(nx.normalized_laplacian_spectrum(G))
-    ws = np.sum((1-normalized_laplacian_eigenvalues)**n)
-    return(np.float64(ws))
-
-def percolation_limit(G, nodes, n=3):
+def percolation_limit(G, nodes):
     degrees = np.array(list(degree(G, nodes).values()))
-    k0 = np.sum(degrees)/len(G)
-    k02 = np.sum(degrees**2)/len(G)
+    k0 = np.sum(degrees/len(G))
+    k02 = np.sum((degrees**2)/len(G))
     pl = 1 - 1/(k02/k0 -1)
     return(np.float64(pl))
-
-def effective_graph_resistance(G, nodes, laplacian_eigenvalues=None):
-    if(laplacian_eigenvalues is None):
-        laplacian_eigenvalues = np.real(nx.laplacian_spectrum(G))
-    nonzero_eigenvalues = laplacian_eigenvalues[np.nonzero(laplacian_eigenvalues)]
-    nst = len(G)*np.sum(1/nonzero_eigenvalues)
-    return(np.float64(nst))
 
 def node_connectivity(G, nodes): # if ,too slow see approx
     return(np.float64(nx.node_connectivity(G)))
@@ -100,9 +67,70 @@ def node_connectivity(G, nodes): # if ,too slow see approx
 def edge_connectivity(G, nodes):
     return(np.float64(nx.edge_connectivity(G)))
 
-def nb_spanning_trees(G, nodes, laplacian_eigenvalues=None):
+def algebraic_connectivity(G, nodes, eigenvalues=None):
+    laplacian_eigenvalues = None
+    if(not eigenvalues is None):
+        laplacian_eigenvalues = eigenvalues[&#34;laplacian&#34;]
     if(laplacian_eigenvalues is None):
         laplacian_eigenvalues = np.real(nx.laplacian_spectrum(G))
+        
+    laplacian_eigenvalues = np.delete(laplacian_eigenvalues, laplacian_eigenvalues.argmin())
+    v = np.min(laplacian_eigenvalues)
+    return(np.float64(v))
+
+def largest_eigenvalue(G, nodes, eigenvalues=None):
+    adjacency_eigenvalues = None
+    if(not eigenvalues is None):
+        adjacency_eigenvalues = eigenvalues[&#34;adjacency&#34;]
+    if(adjacency_eigenvalues is None):
+        adjacency_eigenvalues = np.real(nx.adjacency_spectrum(G))
+    return(np.float64(max(adjacency_eigenvalues)))
+
+def symmetry_ratio(G, nodes, eigenvalues=None):
+    adjacency_eigenvalues = None
+    if(not eigenvalues is None):
+        adjacency_eigenvalues = eigenvalues[&#34;adjacency&#34;]
+    if(adjacency_eigenvalues is None):
+        adjacency_eigenvalues = np.real(nx.adjacency_spectrum(G))
+    r = len(np.unique(adjacency_eigenvalues))/(diameter(G, nodes)+1)
+    return(np.float64(r))
+
+def natural_connectivity(G, nodes, eigenvalues=None):
+    adjacency_eigenvalues = None
+    if(not eigenvalues is None):
+        adjacency_eigenvalues = eigenvalues[&#34;adjacency&#34;]
+    if(adjacency_eigenvalues is None):
+        adjacency_eigenvalues = np.real(nx.adjacency_spectrum(G))
+    nc = np.log(np.mean(np.exp(adjacency_eigenvalues)))
+    return(np.float64(nc))
+
+def weighted_spectrum(G, nodes, n=3, eigenvalues=None):
+    normalized_laplacian_eigenvalues = None
+    if(not eigenvalues is None):
+        normalized_laplacian_eigenvalues = eigenvalues[&#34;normalized_laplacian&#34;]
+    if(normalized_laplacian_eigenvalues is None):
+        normalized_laplacian_eigenvalues = np.real(nx.normalized_laplacian_spectrum(G))
+    ws = np.sum((1-normalized_laplacian_eigenvalues)**n)
+    return(np.float64(ws))
+
+def effective_graph_resistance(G, nodes, eigenvalues=None):
+    laplacian_eigenvalues = None
+    if(not eigenvalues is None):
+        laplacian_eigenvalues = eigenvalues[&#34;laplacian&#34;]
+    if(laplacian_eigenvalues is None):
+        laplacian_eigenvalues = np.real(nx.laplacian_spectrum(G))
+    laplacian_eigenvalues = np.delete(laplacian_eigenvalues, laplacian_eigenvalues.argmin())
+    nonzero_eigenvalues = laplacian_eigenvalues[np.nonzero(laplacian_eigenvalues)]
+    nst = len(G)*np.sum(1/nonzero_eigenvalues)
+    return(np.float64(nst))
+
+def nb_spanning_trees(G, nodes, eigenvalues=None):
+    laplacian_eigenvalues = None
+    if(not eigenvalues is None):
+        laplacian_eigenvalues = eigenvalues[&#34;laplacian&#34;]
+    if(laplacian_eigenvalues is None):
+        laplacian_eigenvalues = np.real(nx.laplacian_spectrum(G))
+    laplacian_eigenvalues = np.delete(laplacian_eigenvalues, laplacian_eigenvalues.argmin())
     nonzero_eigenvalues = laplacian_eigenvalues[np.nonzero(laplacian_eigenvalues)]
     nst = np.prod(nonzero_eigenvalues/len(G))
     return(np.float64(nst))
@@ -110,114 +138,83 @@ def nb_spanning_trees(G, nodes, laplacian_eigenvalues=None):
 class GraphFeatures(NodesFeatures):
     
     def __init__(self, primingFile, dataFile, params, outFolder, logFiles):
+        
+        self.params[&#34;use_networkit&#34;] = True
+        self.params[&#34;all_nodes&#34;] = True
+        self.params[&#34;nodes&#34;] = None
+        self.params[&#34;exclude_features&#34;] = [] # Excluded by default
+        self.params[&#34;include_features&#34;] = [
+            &#39;degree&#39;, &#39;degree_centrality&#39;, &#39;average_neighbor_degree&#39;, &#39;node_clique_number&#39;, 
+            &#39;number_of_cliques&#39;, &#39;eigenvector&#39;, &#39;pagerank&#39;, &#39;clustering&#39;, &#39;triangles&#39;,
+            &#39;nb_of_nodes&#39;, &#39;nb_of_edges&#39;, &#39;diameter&#39;, &#39;assortativity&#39;, &#39;percolation_limit&#39;, 
+        ]
+        self.params[&#34;verbose&#34;] = False
+        self.params[&#34;nbProcessFeatures&#34;] = multiprocessing.cpu_count()
 
-        NodesFeatures.__init__(self, primingFile, dataFile, params, outFolder, logFiles)
+        Graph.__init__(self, primingFile, dataFile, params, outFolder, logFiles)
+         
+    def getFeatures(self, G, nodes):
+        
+        features_nx, features_nk = NodesFeatures.getFeatures(self, G, nodes)
+        
+        for k,v in features_nx.items():
+            features_nx[k] = (avgNodes,)+v
+        for k,v in features_nk.items():
+            features_nk[k] = (avgNodes,)+v
+        
+        self.eigenvalues={
+                &#34;laplacian&#34;:None,
+                &#34;adjacency&#34;:None,
+                &#34;normalized_laplacian&#34;:None,
+        }
+        
+        features_nx[&#34;nb_of_nodes&#34;] = (nb_of_nodes, G, nodes)
+        features_nx[&#34;nb_of_edges&#34;] = (nb_of_edges, G, nodes)
+        features_nx[&#34;diameter&#34;] = (diameter, G, nodes)
+        features_nx[&#34;assortativity&#34;] = (assortativity, G, nodes)
+        features_nx[&#34;largest_eigenvalue&#34;] = (largest_eigenvalue, G, nodes, self.eigenvalues)
+        features_nx[&#34;algebraic_connectivity&#34;] = (algebraic_connectivity, G, nodes, self.eigenvalues)
+        features_nx[&#34;effective_graph_resistance&#34;] = (effective_graph_resistance, G, nodes, self.eigenvalues)
+        features_nx[&#34;symmetry_ratio&#34;] = (symmetry_ratio, G, nodes, self.eigenvalues)
+        features_nx[&#34;natural_connectivity&#34;] = (natural_connectivity, G, nodes, self.eigenvalues)
+        features_nx[&#34;node_connectivity&#34;] = (node_connectivity, G, nodes)
+        features_nx[&#34;edge_connectivity&#34;] = (edge_connectivity, G, nodes)
+        features_nx[&#34;weighted_spectrum_3&#34;] = (weighted_spectrum, G, nodes, 3, self.eigenvalues)
+        features_nx[&#34;weighted_spectrum_4&#34;] = (weighted_spectrum, G, nodes, 4, self.eigenvalues)
+        features_nx[&#34;percolation_limit&#34;] = (percolation_limit, G, nodes)
+        features_nx[&#34;nb_spanning_trees&#34;] = (nb_spanning_trees, G, nodes, self.eigenvalues)
+        
+        return(features_nx, features_nk)
+            
+    def computeFeatures(self, G, features_nx, features_nk):
     
-    def transforms(self, index, G):
-
-        nodes = self.params[&#34;nodes&#34;]
-
-        if(nodes is None):
-            if(not self.params[&#34;all_nodes&#34;]):
-                core_number = nx.core_number(G)
-                k = np.percentile(list(core_number.values()),98)
-                G = nx.k_core(G, k, core_number)
-
-            nodes = G.nodes
-
-        laplacian_eigenvalues = None
-        adjacency_eigenvalues = None
-        normalized_laplacian_eigenvalues = None
-
-        results = {}
-
-        features = {}
-        features[&#34;nb_of_nodes&#34;] = (nb_of_nodes, G, nodes)
-        features[&#34;nb_of_edges&#34;] = (nb_of_edges, G, nodes)
-        features[&#34;diameter&#34;] = (diameter, G, nodes)
-        features[&#34;assortativity&#34;] = (assortativity, G, nodes)
-        features[&#34;largest_eigenvalue&#34;] = (largest_eigenvalue, G, nodes, adjacency_eigenvalues)
-        features[&#34;algebraic_connectivity&#34;] = (algebraic_connectivity, G, nodes)
-        features[&#34;effective_graph_resistance&#34;] = (effective_graph_resistance, G, nodes, laplacian_eigenvalues)
-        features[&#34;symmetry_ratio&#34;] = (symmetry_ratio, G, nodes, adjacency_eigenvalues)
-        features[&#34;natural_connectivity&#34;] = (natural_connectivity, G, nodes, adjacency_eigenvalues)
-        features[&#34;node_connectivity&#34;] = (node_connectivity, G, nodes)
-        features[&#34;edge_connectivity&#34;] = (edge_connectivity, G, nodes)
-        features[&#34;weighted_spectrum_3&#34;] = (weighted_spectrum, G, nodes, normalized_laplacian_eigenvalues, 3)
-        features[&#34;weighted_spectrum_4&#34;] = (weighted_spectrum, G, nodes, normalized_laplacian_eigenvalues, 4)
-        features[&#34;percolation_limit&#34;] = (percolation_limit, G, nodes)
-        features[&#34;nb_spanning_trees&#34;] = (nb_spanning_trees, G, nodes, laplacian_eigenvalues)
-
-        features[&#34;load&#34;] = (avgNodes, load, G, nodes) # slow
-        features[&#34;local_efficiency&#34;] = (avgNodes, local_efficiency, G, nodes)
-        features[&#34;harmonic&#34;] = (avgNodes, harmonic, G, nodes) # slow, but faster than harmonic_nk
-        features[&#34;degree&#34;] = (avgNodes, degree, G, nodes) # already fast with nx
-        features[&#34;degree_centrality&#34;] = (avgNodes, degree_centrality, G, nodes) # already fast with nx
-        features[&#34;square_clustering&#34;] = (avgNodes, square_clustering, G, nodes)
-        features[&#34;average_neighbor_degree&#34;] = (avgNodes, average_neighbor_degree, G, nodes)
-
-        if(not self.params[&#34;use_networkit&#34;]):
-            features[&#34;betweenness&#34;] = (avgNodes, betweenness, G, nodes)
-            features[&#34;closeness&#34;] = (avgNodes, closeness, G, nodes) 
-            features[&#34;eigenvector&#34;] = (avgNodes, eigenvector, G, nodes)
-            features[&#34;pagerank&#34;] = (avgNodes, pagerank, G, nodes)
-            features[&#34;number_of_cliques&#34;] = (avgNodes, number_of_cliques, G, nodes)
-            features[&#34;node_clique_number&#34;] = (avgNodes, node_clique_number, G, nodes)
-            features[&#34;clustering&#34;] = (avgNodes, clustering, G, nodes)
-            features[&#34;triangles&#34;] = (avgNodes, triangles, G, nodes)
-            features[&#34;eccentricity&#34;] = (avgNodes, eccentricity, G, nodes)
-            features[&#34;average_shortest_path_length&#34;] = (avgNodes, average_shortest_path_length, G, nodes)
-
-        features = removedExcludedFeatures(features, self.params[&#34;exclude_features&#34;], self.params[&#34;include_features&#34;])
-
-        if(&#34;effective_graph_resistance&#34; in features or &#34;nb_spanning_trees&#34; in features):
+        if(&#34;effective_graph_resistance&#34; in features_nx or &#34;nb_spanning_trees&#34; in features_nx or &#34;algebraic_connectivity&#34; in features_nx):
             if(self.params[&#34;verbose&#34;]):
                 print(&#34;Computing laplacian_eigenvalues&#34;)
-            s = time.time()
-            laplacian_eigenvalues = np.real(nx.laplacian_spectrum(G))
+                s = time.time()
+            self.eigenvalues[&#34;laplacian&#34;] = np.real(nx.laplacian_spectrum(G))
             if(self.params[&#34;verbose&#34;]):
                 print(&#34;Finish laplacian_eigenvalues (%s)&#34; % (timeFormat(time.time()-s)))
-        if(&#34;largest_eigenvalue&#34; in features or &#34;symmetry_ratio&#34; in features or &#34;natural_connectivity&#34; in features):
+                
+        if(&#34;largest_eigenvalue&#34; in features_nx or &#34;symmetry_ratio&#34; in features_nx or &#34;natural_connectivity&#34; in features_nx):
             if(self.params[&#34;verbose&#34;]):
                 print(&#34;Computing adjacency_eigenvalues&#34;)
-            s = time.time()
-            adjacency_eigenvalues = np.real(nx.adjacency_spectrum(G))
+                s = time.time()
+            self.eigenvalues[&#34;adjacency&#34;] = np.real(nx.adjacency_spectrum(G))
             if(self.params[&#34;verbose&#34;]):
                 print(&#34;Finish adjacency_eigenvalues (%s)&#34; % (timeFormat(time.time()-s)))
-        if(&#34;weighted_spectrum_3&#34; in features or &#34;weighted_spectrum_4&#34; in features):
+                
+        if(&#34;weighted_spectrum_3&#34; in features_nx or &#34;weighted_spectrum_4&#34; in features_nx):
             if(self.params[&#34;verbose&#34;]):
                 print(&#34;Computing normalized_laplacian_eigenvalues&#34;)
-            s = time.time()
-            normalized_laplacian_eigenvalues = np.real(nx.normalized_laplacian_spectrum(G))
+                s = time.time()
+            self.eigenvalues[&#34;normalized_laplacian&#34;] = np.real(nx.normalized_laplacian_spectrum(G))
             if(self.params[&#34;verbose&#34;]):
                 print(&#34;Finish normalized_laplacian_eigenvalues (%s)&#34; % (timeFormat(time.time()-s)))
-
-        results.update(computeFeaturesParallelized(features, self.params[&#34;nbProcess&#34;], self.params[&#34;verbose&#34;]))
-
-        del laplacian_eigenvalues
-        del adjacency_eigenvalues
-        del normalized_laplacian_eigenvalues
         
-        if(self.params[&#34;use_networkit&#34;]):
-            Gnk = nx2nk(G)
+        return(NodesFeatures.computeFeatures(self, G, features_nx, features_nk))
 
-            features = {}
-            features[&#34;betweenness&#34;] = (avgNodes, betweenness_nk, G, Gnk, nodes)
-            features[&#34;closeness&#34;] = (avgNodes, closeness_nk, G, Gnk, nodes)
-            features[&#34;eigenvector&#34;] = (avgNodes, eigenvector_nk, G, Gnk, nodes)
-            features[&#34;pagerank&#34;] = (avgNodes, pagerank_nk, G, Gnk, nodes)
-            features[&#34;number_of_cliques&#34;] = (avgNodes, number_of_cliques_nk, G, Gnk, nodes)
-            features[&#34;node_clique_number&#34;] = (avgNodes, node_clique_number_nk, G, Gnk, nodes)
-            features[&#34;clustering&#34;] = (avgNodes, clustering_nk, G, Gnk, nodes)
-            features[&#34;triangles&#34;] = (avgNodes, triangles_nk, G, Gnk, nodes)
-            features[&#34;eccentricity&#34;] = (avgNodes, eccentricity_nk, G, Gnk, nodes)
-            features[&#34;average_shortest_path_length&#34;] = (avgNodes, average_shortest_path_length_nk, G, Gnk, nodes)
-
-            features = removedExcludedFeatures(features, self.params[&#34;exclude_features&#34;], self.params[&#34;include_features&#34;])
-            results.update(computeFeatures(features, self.params[&#34;verbose&#34;]))
-            #results.update(computeFeaturesParallelized(features, self.params[&#34;verbose&#34;]))
-        
-        return(results)</code></pre>
+    </code></pre>
 </details>
 </section>
 <section>
@@ -228,7 +225,7 @@ class GraphFeatures(NodesFeatures):
 <h2 class="section-title" id="header-functions">Functions</h2>
 <dl>
 <dt id="BML.transform.graph_features.algebraic_connectivity"><code class="name flex">
-<span>def <span class="ident">algebraic_connectivity</span></span>(<span>G, nodes)</span>
+<span>def <span class="ident">algebraic_connectivity</span></span>(<span>G, nodes, eigenvalues=None)</span>
 </code></dt>
 <dd>
 <div class="desc"></div>
@@ -236,9 +233,16 @@ class GraphFeatures(NodesFeatures):
 <summary>
 <span>Expand source code</span>
 </summary>
-<pre><code class="python">def algebraic_connectivity(G, nodes):
-    ac = nx.algebraic_connectivity(G)
-    return(np.float64(ac))</code></pre>
+<pre><code class="python">def algebraic_connectivity(G, nodes, eigenvalues=None):
+    laplacian_eigenvalues = None
+    if(not eigenvalues is None):
+        laplacian_eigenvalues = eigenvalues[&#34;laplacian&#34;]
+    if(laplacian_eigenvalues is None):
+        laplacian_eigenvalues = np.real(nx.laplacian_spectrum(G))
+        
+    laplacian_eigenvalues = np.delete(laplacian_eigenvalues, laplacian_eigenvalues.argmin())
+    v = np.min(laplacian_eigenvalues)
+    return(np.float64(v))</code></pre>
 </details>
 </dd>
 <dt id="BML.transform.graph_features.assortativity"><code class="name flex">
@@ -295,7 +299,7 @@ class GraphFeatures(NodesFeatures):
 </details>
 </dd>
 <dt id="BML.transform.graph_features.effective_graph_resistance"><code class="name flex">
-<span>def <span class="ident">effective_graph_resistance</span></span>(<span>G, nodes, laplacian_eigenvalues=None)</span>
+<span>def <span class="ident">effective_graph_resistance</span></span>(<span>G, nodes, eigenvalues=None)</span>
 </code></dt>
 <dd>
 <div class="desc"></div>
@@ -303,16 +307,20 @@ class GraphFeatures(NodesFeatures):
 <summary>
 <span>Expand source code</span>
 </summary>
-<pre><code class="python">def effective_graph_resistance(G, nodes, laplacian_eigenvalues=None):
+<pre><code class="python">def effective_graph_resistance(G, nodes, eigenvalues=None):
+    laplacian_eigenvalues = None
+    if(not eigenvalues is None):
+        laplacian_eigenvalues = eigenvalues[&#34;laplacian&#34;]
     if(laplacian_eigenvalues is None):
         laplacian_eigenvalues = np.real(nx.laplacian_spectrum(G))
+    laplacian_eigenvalues = np.delete(laplacian_eigenvalues, laplacian_eigenvalues.argmin())
     nonzero_eigenvalues = laplacian_eigenvalues[np.nonzero(laplacian_eigenvalues)]
     nst = len(G)*np.sum(1/nonzero_eigenvalues)
     return(np.float64(nst))</code></pre>
 </details>
 </dd>
 <dt id="BML.transform.graph_features.largest_eigenvalue"><code class="name flex">
-<span>def <span class="ident">largest_eigenvalue</span></span>(<span>G, nodes, adjacency_eigenvalues=None)</span>
+<span>def <span class="ident">largest_eigenvalue</span></span>(<span>G, nodes, eigenvalues=None)</span>
 </code></dt>
 <dd>
 <div class="desc"></div>
@@ -320,14 +328,17 @@ class GraphFeatures(NodesFeatures):
 <summary>
 <span>Expand source code</span>
 </summary>
-<pre><code class="python">def largest_eigenvalue(G, nodes, adjacency_eigenvalues=None):
+<pre><code class="python">def largest_eigenvalue(G, nodes, eigenvalues=None):
+    adjacency_eigenvalues = None
+    if(not eigenvalues is None):
+        adjacency_eigenvalues = eigenvalues[&#34;adjacency&#34;]
     if(adjacency_eigenvalues is None):
         adjacency_eigenvalues = np.real(nx.adjacency_spectrum(G))
     return(np.float64(max(adjacency_eigenvalues)))</code></pre>
 </details>
 </dd>
 <dt id="BML.transform.graph_features.natural_connectivity"><code class="name flex">
-<span>def <span class="ident">natural_connectivity</span></span>(<span>G, nodes, adjacency_eigenvalues=None)</span>
+<span>def <span class="ident">natural_connectivity</span></span>(<span>G, nodes, eigenvalues=None)</span>
 </code></dt>
 <dd>
 <div class="desc"></div>
@@ -335,7 +346,10 @@ class GraphFeatures(NodesFeatures):
 <summary>
 <span>Expand source code</span>
 </summary>
-<pre><code class="python">def natural_connectivity(G, nodes, adjacency_eigenvalues=None):
+<pre><code class="python">def natural_connectivity(G, nodes, eigenvalues=None):
+    adjacency_eigenvalues = None
+    if(not eigenvalues is None):
+        adjacency_eigenvalues = eigenvalues[&#34;adjacency&#34;]
     if(adjacency_eigenvalues is None):
         adjacency_eigenvalues = np.real(nx.adjacency_spectrum(G))
     nc = np.log(np.mean(np.exp(adjacency_eigenvalues)))
@@ -369,7 +383,7 @@ class GraphFeatures(NodesFeatures):
 </details>
 </dd>
 <dt id="BML.transform.graph_features.nb_spanning_trees"><code class="name flex">
-<span>def <span class="ident">nb_spanning_trees</span></span>(<span>G, nodes, laplacian_eigenvalues=None)</span>
+<span>def <span class="ident">nb_spanning_trees</span></span>(<span>G, nodes, eigenvalues=None)</span>
 </code></dt>
 <dd>
 <div class="desc"></div>
@@ -377,9 +391,13 @@ class GraphFeatures(NodesFeatures):
 <summary>
 <span>Expand source code</span>
 </summary>
-<pre><code class="python">def nb_spanning_trees(G, nodes, laplacian_eigenvalues=None):
+<pre><code class="python">def nb_spanning_trees(G, nodes, eigenvalues=None):
+    laplacian_eigenvalues = None
+    if(not eigenvalues is None):
+        laplacian_eigenvalues = eigenvalues[&#34;laplacian&#34;]
     if(laplacian_eigenvalues is None):
         laplacian_eigenvalues = np.real(nx.laplacian_spectrum(G))
+    laplacian_eigenvalues = np.delete(laplacian_eigenvalues, laplacian_eigenvalues.argmin())
     nonzero_eigenvalues = laplacian_eigenvalues[np.nonzero(laplacian_eigenvalues)]
     nst = np.prod(nonzero_eigenvalues/len(G))
     return(np.float64(nst))</code></pre>
@@ -399,7 +417,7 @@ class GraphFeatures(NodesFeatures):
 </details>
 </dd>
 <dt id="BML.transform.graph_features.percolation_limit"><code class="name flex">
-<span>def <span class="ident">percolation_limit</span></span>(<span>G, nodes, n=3)</span>
+<span>def <span class="ident">percolation_limit</span></span>(<span>G, nodes)</span>
 </code></dt>
 <dd>
 <div class="desc"></div>
@@ -407,16 +425,16 @@ class GraphFeatures(NodesFeatures):
 <summary>
 <span>Expand source code</span>
 </summary>
-<pre><code class="python">def percolation_limit(G, nodes, n=3):
+<pre><code class="python">def percolation_limit(G, nodes):
     degrees = np.array(list(degree(G, nodes).values()))
-    k0 = np.sum(degrees)/len(G)
-    k02 = np.sum(degrees**2)/len(G)
+    k0 = np.sum(degrees/len(G))
+    k02 = np.sum((degrees**2)/len(G))
     pl = 1 - 1/(k02/k0 -1)
     return(np.float64(pl))</code></pre>
 </details>
 </dd>
 <dt id="BML.transform.graph_features.symmetry_ratio"><code class="name flex">
-<span>def <span class="ident">symmetry_ratio</span></span>(<span>G, nodes, adjacency_eigenvalues=None)</span>
+<span>def <span class="ident">symmetry_ratio</span></span>(<span>G, nodes, eigenvalues=None)</span>
 </code></dt>
 <dd>
 <div class="desc"></div>
@@ -424,7 +442,10 @@ class GraphFeatures(NodesFeatures):
 <summary>
 <span>Expand source code</span>
 </summary>
-<pre><code class="python">def symmetry_ratio(G, nodes, adjacency_eigenvalues=None):
+<pre><code class="python">def symmetry_ratio(G, nodes, eigenvalues=None):
+    adjacency_eigenvalues = None
+    if(not eigenvalues is None):
+        adjacency_eigenvalues = eigenvalues[&#34;adjacency&#34;]
     if(adjacency_eigenvalues is None):
         adjacency_eigenvalues = np.real(nx.adjacency_spectrum(G))
     r = len(np.unique(adjacency_eigenvalues))/(diameter(G, nodes)+1)
@@ -432,7 +453,7 @@ class GraphFeatures(NodesFeatures):
 </details>
 </dd>
 <dt id="BML.transform.graph_features.weighted_spectrum"><code class="name flex">
-<span>def <span class="ident">weighted_spectrum</span></span>(<span>G, nodes, normalized_laplacian_eigenvalues=None, n=3)</span>
+<span>def <span class="ident">weighted_spectrum</span></span>(<span>G, nodes, n=3, eigenvalues=None)</span>
 </code></dt>
 <dd>
 <div class="desc"></div>
@@ -440,7 +461,10 @@ class GraphFeatures(NodesFeatures):
 <summary>
 <span>Expand source code</span>
 </summary>
-<pre><code class="python">def weighted_spectrum(G, nodes, normalized_laplacian_eigenvalues=None, n=3):
+<pre><code class="python">def weighted_spectrum(G, nodes, n=3, eigenvalues=None):
+    normalized_laplacian_eigenvalues = None
+    if(not eigenvalues is None):
+        normalized_laplacian_eigenvalues = eigenvalues[&#34;normalized_laplacian&#34;]
     if(normalized_laplacian_eigenvalues is None):
         normalized_laplacian_eigenvalues = np.real(nx.normalized_laplacian_spectrum(G))
     ws = np.sum((1-normalized_laplacian_eigenvalues)**n)
@@ -465,114 +489,81 @@ class GraphFeatures(NodesFeatures):
 <pre><code class="python">class GraphFeatures(NodesFeatures):
     
     def __init__(self, primingFile, dataFile, params, outFolder, logFiles):
+        
+        self.params[&#34;use_networkit&#34;] = True
+        self.params[&#34;all_nodes&#34;] = True
+        self.params[&#34;nodes&#34;] = None
+        self.params[&#34;exclude_features&#34;] = [] # Excluded by default
+        self.params[&#34;include_features&#34;] = [
+            &#39;degree&#39;, &#39;degree_centrality&#39;, &#39;average_neighbor_degree&#39;, &#39;node_clique_number&#39;, 
+            &#39;number_of_cliques&#39;, &#39;eigenvector&#39;, &#39;pagerank&#39;, &#39;clustering&#39;, &#39;triangles&#39;,
+            &#39;nb_of_nodes&#39;, &#39;nb_of_edges&#39;, &#39;diameter&#39;, &#39;assortativity&#39;, &#39;percolation_limit&#39;, 
+        ]
+        self.params[&#34;verbose&#34;] = False
+        self.params[&#34;nbProcessFeatures&#34;] = multiprocessing.cpu_count()
 
-        NodesFeatures.__init__(self, primingFile, dataFile, params, outFolder, logFiles)
+        Graph.__init__(self, primingFile, dataFile, params, outFolder, logFiles)
+         
+    def getFeatures(self, G, nodes):
+        
+        features_nx, features_nk = NodesFeatures.getFeatures(self, G, nodes)
+        
+        for k,v in features_nx.items():
+            features_nx[k] = (avgNodes,)+v
+        for k,v in features_nk.items():
+            features_nk[k] = (avgNodes,)+v
+        
+        self.eigenvalues={
+                &#34;laplacian&#34;:None,
+                &#34;adjacency&#34;:None,
+                &#34;normalized_laplacian&#34;:None,
+        }
+        
+        features_nx[&#34;nb_of_nodes&#34;] = (nb_of_nodes, G, nodes)
+        features_nx[&#34;nb_of_edges&#34;] = (nb_of_edges, G, nodes)
+        features_nx[&#34;diameter&#34;] = (diameter, G, nodes)
+        features_nx[&#34;assortativity&#34;] = (assortativity, G, nodes)
+        features_nx[&#34;largest_eigenvalue&#34;] = (largest_eigenvalue, G, nodes, self.eigenvalues)
+        features_nx[&#34;algebraic_connectivity&#34;] = (algebraic_connectivity, G, nodes, self.eigenvalues)
+        features_nx[&#34;effective_graph_resistance&#34;] = (effective_graph_resistance, G, nodes, self.eigenvalues)
+        features_nx[&#34;symmetry_ratio&#34;] = (symmetry_ratio, G, nodes, self.eigenvalues)
+        features_nx[&#34;natural_connectivity&#34;] = (natural_connectivity, G, nodes, self.eigenvalues)
+        features_nx[&#34;node_connectivity&#34;] = (node_connectivity, G, nodes)
+        features_nx[&#34;edge_connectivity&#34;] = (edge_connectivity, G, nodes)
+        features_nx[&#34;weighted_spectrum_3&#34;] = (weighted_spectrum, G, nodes, 3, self.eigenvalues)
+        features_nx[&#34;weighted_spectrum_4&#34;] = (weighted_spectrum, G, nodes, 4, self.eigenvalues)
+        features_nx[&#34;percolation_limit&#34;] = (percolation_limit, G, nodes)
+        features_nx[&#34;nb_spanning_trees&#34;] = (nb_spanning_trees, G, nodes, self.eigenvalues)
+        
+        return(features_nx, features_nk)
+            
+    def computeFeatures(self, G, features_nx, features_nk):
     
-    def transforms(self, index, G):
-
-        nodes = self.params[&#34;nodes&#34;]
-
-        if(nodes is None):
-            if(not self.params[&#34;all_nodes&#34;]):
-                core_number = nx.core_number(G)
-                k = np.percentile(list(core_number.values()),98)
-                G = nx.k_core(G, k, core_number)
-
-            nodes = G.nodes
-
-        laplacian_eigenvalues = None
-        adjacency_eigenvalues = None
-        normalized_laplacian_eigenvalues = None
-
-        results = {}
-
-        features = {}
-        features[&#34;nb_of_nodes&#34;] = (nb_of_nodes, G, nodes)
-        features[&#34;nb_of_edges&#34;] = (nb_of_edges, G, nodes)
-        features[&#34;diameter&#34;] = (diameter, G, nodes)
-        features[&#34;assortativity&#34;] = (assortativity, G, nodes)
-        features[&#34;largest_eigenvalue&#34;] = (largest_eigenvalue, G, nodes, adjacency_eigenvalues)
-        features[&#34;algebraic_connectivity&#34;] = (algebraic_connectivity, G, nodes)
-        features[&#34;effective_graph_resistance&#34;] = (effective_graph_resistance, G, nodes, laplacian_eigenvalues)
-        features[&#34;symmetry_ratio&#34;] = (symmetry_ratio, G, nodes, adjacency_eigenvalues)
-        features[&#34;natural_connectivity&#34;] = (natural_connectivity, G, nodes, adjacency_eigenvalues)
-        features[&#34;node_connectivity&#34;] = (node_connectivity, G, nodes)
-        features[&#34;edge_connectivity&#34;] = (edge_connectivity, G, nodes)
-        features[&#34;weighted_spectrum_3&#34;] = (weighted_spectrum, G, nodes, normalized_laplacian_eigenvalues, 3)
-        features[&#34;weighted_spectrum_4&#34;] = (weighted_spectrum, G, nodes, normalized_laplacian_eigenvalues, 4)
-        features[&#34;percolation_limit&#34;] = (percolation_limit, G, nodes)
-        features[&#34;nb_spanning_trees&#34;] = (nb_spanning_trees, G, nodes, laplacian_eigenvalues)
-
-        features[&#34;load&#34;] = (avgNodes, load, G, nodes) # slow
-        features[&#34;local_efficiency&#34;] = (avgNodes, local_efficiency, G, nodes)
-        features[&#34;harmonic&#34;] = (avgNodes, harmonic, G, nodes) # slow, but faster than harmonic_nk
-        features[&#34;degree&#34;] = (avgNodes, degree, G, nodes) # already fast with nx
-        features[&#34;degree_centrality&#34;] = (avgNodes, degree_centrality, G, nodes) # already fast with nx
-        features[&#34;square_clustering&#34;] = (avgNodes, square_clustering, G, nodes)
-        features[&#34;average_neighbor_degree&#34;] = (avgNodes, average_neighbor_degree, G, nodes)
-
-        if(not self.params[&#34;use_networkit&#34;]):
-            features[&#34;betweenness&#34;] = (avgNodes, betweenness, G, nodes)
-            features[&#34;closeness&#34;] = (avgNodes, closeness, G, nodes) 
-            features[&#34;eigenvector&#34;] = (avgNodes, eigenvector, G, nodes)
-            features[&#34;pagerank&#34;] = (avgNodes, pagerank, G, nodes)
-            features[&#34;number_of_cliques&#34;] = (avgNodes, number_of_cliques, G, nodes)
-            features[&#34;node_clique_number&#34;] = (avgNodes, node_clique_number, G, nodes)
-            features[&#34;clustering&#34;] = (avgNodes, clustering, G, nodes)
-            features[&#34;triangles&#34;] = (avgNodes, triangles, G, nodes)
-            features[&#34;eccentricity&#34;] = (avgNodes, eccentricity, G, nodes)
-            features[&#34;average_shortest_path_length&#34;] = (avgNodes, average_shortest_path_length, G, nodes)
-
-        features = removedExcludedFeatures(features, self.params[&#34;exclude_features&#34;], self.params[&#34;include_features&#34;])
-
-        if(&#34;effective_graph_resistance&#34; in features or &#34;nb_spanning_trees&#34; in features):
+        if(&#34;effective_graph_resistance&#34; in features_nx or &#34;nb_spanning_trees&#34; in features_nx or &#34;algebraic_connectivity&#34; in features_nx):
             if(self.params[&#34;verbose&#34;]):
                 print(&#34;Computing laplacian_eigenvalues&#34;)
-            s = time.time()
-            laplacian_eigenvalues = np.real(nx.laplacian_spectrum(G))
+                s = time.time()
+            self.eigenvalues[&#34;laplacian&#34;] = np.real(nx.laplacian_spectrum(G))
             if(self.params[&#34;verbose&#34;]):
                 print(&#34;Finish laplacian_eigenvalues (%s)&#34; % (timeFormat(time.time()-s)))
-        if(&#34;largest_eigenvalue&#34; in features or &#34;symmetry_ratio&#34; in features or &#34;natural_connectivity&#34; in features):
+                
+        if(&#34;largest_eigenvalue&#34; in features_nx or &#34;symmetry_ratio&#34; in features_nx or &#34;natural_connectivity&#34; in features_nx):
             if(self.params[&#34;verbose&#34;]):
                 print(&#34;Computing adjacency_eigenvalues&#34;)
-            s = time.time()
-            adjacency_eigenvalues = np.real(nx.adjacency_spectrum(G))
+                s = time.time()
+            self.eigenvalues[&#34;adjacency&#34;] = np.real(nx.adjacency_spectrum(G))
             if(self.params[&#34;verbose&#34;]):
                 print(&#34;Finish adjacency_eigenvalues (%s)&#34; % (timeFormat(time.time()-s)))
-        if(&#34;weighted_spectrum_3&#34; in features or &#34;weighted_spectrum_4&#34; in features):
+                
+        if(&#34;weighted_spectrum_3&#34; in features_nx or &#34;weighted_spectrum_4&#34; in features_nx):
             if(self.params[&#34;verbose&#34;]):
                 print(&#34;Computing normalized_laplacian_eigenvalues&#34;)
-            s = time.time()
-            normalized_laplacian_eigenvalues = np.real(nx.normalized_laplacian_spectrum(G))
+                s = time.time()
+            self.eigenvalues[&#34;normalized_laplacian&#34;] = np.real(nx.normalized_laplacian_spectrum(G))
             if(self.params[&#34;verbose&#34;]):
                 print(&#34;Finish normalized_laplacian_eigenvalues (%s)&#34; % (timeFormat(time.time()-s)))
-
-        results.update(computeFeaturesParallelized(features, self.params[&#34;nbProcess&#34;], self.params[&#34;verbose&#34;]))
-
-        del laplacian_eigenvalues
-        del adjacency_eigenvalues
-        del normalized_laplacian_eigenvalues
         
-        if(self.params[&#34;use_networkit&#34;]):
-            Gnk = nx2nk(G)
-
-            features = {}
-            features[&#34;betweenness&#34;] = (avgNodes, betweenness_nk, G, Gnk, nodes)
-            features[&#34;closeness&#34;] = (avgNodes, closeness_nk, G, Gnk, nodes)
-            features[&#34;eigenvector&#34;] = (avgNodes, eigenvector_nk, G, Gnk, nodes)
-            features[&#34;pagerank&#34;] = (avgNodes, pagerank_nk, G, Gnk, nodes)
-            features[&#34;number_of_cliques&#34;] = (avgNodes, number_of_cliques_nk, G, Gnk, nodes)
-            features[&#34;node_clique_number&#34;] = (avgNodes, node_clique_number_nk, G, Gnk, nodes)
-            features[&#34;clustering&#34;] = (avgNodes, clustering_nk, G, Gnk, nodes)
-            features[&#34;triangles&#34;] = (avgNodes, triangles_nk, G, Gnk, nodes)
-            features[&#34;eccentricity&#34;] = (avgNodes, eccentricity_nk, G, Gnk, nodes)
-            features[&#34;average_shortest_path_length&#34;] = (avgNodes, average_shortest_path_length_nk, G, Gnk, nodes)
-
-            features = removedExcludedFeatures(features, self.params[&#34;exclude_features&#34;], self.params[&#34;include_features&#34;])
-            results.update(computeFeatures(features, self.params[&#34;verbose&#34;]))
-            #results.update(computeFeaturesParallelized(features, self.params[&#34;verbose&#34;]))
-        
-        return(results)</code></pre>
+        return(NodesFeatures.computeFeatures(self, G, features_nx, features_nk))</code></pre>
 </details>
 <h3>Ancestors</h3>
 <ul class="hlist">
@@ -584,8 +575,8 @@ class GraphFeatures(NodesFeatures):
 </ul>
 <h3>Methods</h3>
 <dl>
-<dt id="BML.transform.graph_features.GraphFeatures.transforms"><code class="name flex">
-<span>def <span class="ident">transforms</span></span>(<span>self, index, G)</span>
+<dt id="BML.transform.graph_features.GraphFeatures.computeFeatures"><code class="name flex">
+<span>def <span class="ident">computeFeatures</span></span>(<span>self, G, features_nx, features_nk)</span>
 </code></dt>
 <dd>
 <div class="desc"></div>
@@ -593,111 +584,76 @@ class GraphFeatures(NodesFeatures):
 <summary>
 <span>Expand source code</span>
 </summary>
-<pre><code class="python">def transforms(self, index, G):
+<pre><code class="python">def computeFeatures(self, G, features_nx, features_nk):
 
-    nodes = self.params[&#34;nodes&#34;]
-
-    if(nodes is None):
-        if(not self.params[&#34;all_nodes&#34;]):
-            core_number = nx.core_number(G)
-            k = np.percentile(list(core_number.values()),98)
-            G = nx.k_core(G, k, core_number)
-
-        nodes = G.nodes
-
-    laplacian_eigenvalues = None
-    adjacency_eigenvalues = None
-    normalized_laplacian_eigenvalues = None
-
-    results = {}
-
-    features = {}
-    features[&#34;nb_of_nodes&#34;] = (nb_of_nodes, G, nodes)
-    features[&#34;nb_of_edges&#34;] = (nb_of_edges, G, nodes)
-    features[&#34;diameter&#34;] = (diameter, G, nodes)
-    features[&#34;assortativity&#34;] = (assortativity, G, nodes)
-    features[&#34;largest_eigenvalue&#34;] = (largest_eigenvalue, G, nodes, adjacency_eigenvalues)
-    features[&#34;algebraic_connectivity&#34;] = (algebraic_connectivity, G, nodes)
-    features[&#34;effective_graph_resistance&#34;] = (effective_graph_resistance, G, nodes, laplacian_eigenvalues)
-    features[&#34;symmetry_ratio&#34;] = (symmetry_ratio, G, nodes, adjacency_eigenvalues)
-    features[&#34;natural_connectivity&#34;] = (natural_connectivity, G, nodes, adjacency_eigenvalues)
-    features[&#34;node_connectivity&#34;] = (node_connectivity, G, nodes)
-    features[&#34;edge_connectivity&#34;] = (edge_connectivity, G, nodes)
-    features[&#34;weighted_spectrum_3&#34;] = (weighted_spectrum, G, nodes, normalized_laplacian_eigenvalues, 3)
-    features[&#34;weighted_spectrum_4&#34;] = (weighted_spectrum, G, nodes, normalized_laplacian_eigenvalues, 4)
-    features[&#34;percolation_limit&#34;] = (percolation_limit, G, nodes)
-    features[&#34;nb_spanning_trees&#34;] = (nb_spanning_trees, G, nodes, laplacian_eigenvalues)
-
-    features[&#34;load&#34;] = (avgNodes, load, G, nodes) # slow
-    features[&#34;local_efficiency&#34;] = (avgNodes, local_efficiency, G, nodes)
-    features[&#34;harmonic&#34;] = (avgNodes, harmonic, G, nodes) # slow, but faster than harmonic_nk
-    features[&#34;degree&#34;] = (avgNodes, degree, G, nodes) # already fast with nx
-    features[&#34;degree_centrality&#34;] = (avgNodes, degree_centrality, G, nodes) # already fast with nx
-    features[&#34;square_clustering&#34;] = (avgNodes, square_clustering, G, nodes)
-    features[&#34;average_neighbor_degree&#34;] = (avgNodes, average_neighbor_degree, G, nodes)
-
-    if(not self.params[&#34;use_networkit&#34;]):
-        features[&#34;betweenness&#34;] = (avgNodes, betweenness, G, nodes)
-        features[&#34;closeness&#34;] = (avgNodes, closeness, G, nodes) 
-        features[&#34;eigenvector&#34;] = (avgNodes, eigenvector, G, nodes)
-        features[&#34;pagerank&#34;] = (avgNodes, pagerank, G, nodes)
-        features[&#34;number_of_cliques&#34;] = (avgNodes, number_of_cliques, G, nodes)
-        features[&#34;node_clique_number&#34;] = (avgNodes, node_clique_number, G, nodes)
-        features[&#34;clustering&#34;] = (avgNodes, clustering, G, nodes)
-        features[&#34;triangles&#34;] = (avgNodes, triangles, G, nodes)
-        features[&#34;eccentricity&#34;] = (avgNodes, eccentricity, G, nodes)
-        features[&#34;average_shortest_path_length&#34;] = (avgNodes, average_shortest_path_length, G, nodes)
-
-    features = removedExcludedFeatures(features, self.params[&#34;exclude_features&#34;], self.params[&#34;include_features&#34;])
-
-    if(&#34;effective_graph_resistance&#34; in features or &#34;nb_spanning_trees&#34; in features):
+    if(&#34;effective_graph_resistance&#34; in features_nx or &#34;nb_spanning_trees&#34; in features_nx or &#34;algebraic_connectivity&#34; in features_nx):
         if(self.params[&#34;verbose&#34;]):
             print(&#34;Computing laplacian_eigenvalues&#34;)
-        s = time.time()
-        laplacian_eigenvalues = np.real(nx.laplacian_spectrum(G))
+            s = time.time()
+        self.eigenvalues[&#34;laplacian&#34;] = np.real(nx.laplacian_spectrum(G))
         if(self.params[&#34;verbose&#34;]):
             print(&#34;Finish laplacian_eigenvalues (%s)&#34; % (timeFormat(time.time()-s)))
-    if(&#34;largest_eigenvalue&#34; in features or &#34;symmetry_ratio&#34; in features or &#34;natural_connectivity&#34; in features):
+            
+    if(&#34;largest_eigenvalue&#34; in features_nx or &#34;symmetry_ratio&#34; in features_nx or &#34;natural_connectivity&#34; in features_nx):
         if(self.params[&#34;verbose&#34;]):
             print(&#34;Computing adjacency_eigenvalues&#34;)
-        s = time.time()
-        adjacency_eigenvalues = np.real(nx.adjacency_spectrum(G))
+            s = time.time()
+        self.eigenvalues[&#34;adjacency&#34;] = np.real(nx.adjacency_spectrum(G))
         if(self.params[&#34;verbose&#34;]):
             print(&#34;Finish adjacency_eigenvalues (%s)&#34; % (timeFormat(time.time()-s)))
-    if(&#34;weighted_spectrum_3&#34; in features or &#34;weighted_spectrum_4&#34; in features):
+            
+    if(&#34;weighted_spectrum_3&#34; in features_nx or &#34;weighted_spectrum_4&#34; in features_nx):
         if(self.params[&#34;verbose&#34;]):
             print(&#34;Computing normalized_laplacian_eigenvalues&#34;)
-        s = time.time()
-        normalized_laplacian_eigenvalues = np.real(nx.normalized_laplacian_spectrum(G))
+            s = time.time()
+        self.eigenvalues[&#34;normalized_laplacian&#34;] = np.real(nx.normalized_laplacian_spectrum(G))
         if(self.params[&#34;verbose&#34;]):
             print(&#34;Finish normalized_laplacian_eigenvalues (%s)&#34; % (timeFormat(time.time()-s)))
-
-    results.update(computeFeaturesParallelized(features, self.params[&#34;nbProcess&#34;], self.params[&#34;verbose&#34;]))
-
-    del laplacian_eigenvalues
-    del adjacency_eigenvalues
-    del normalized_laplacian_eigenvalues
     
-    if(self.params[&#34;use_networkit&#34;]):
-        Gnk = nx2nk(G)
-
-        features = {}
-        features[&#34;betweenness&#34;] = (avgNodes, betweenness_nk, G, Gnk, nodes)
-        features[&#34;closeness&#34;] = (avgNodes, closeness_nk, G, Gnk, nodes)
-        features[&#34;eigenvector&#34;] = (avgNodes, eigenvector_nk, G, Gnk, nodes)
-        features[&#34;pagerank&#34;] = (avgNodes, pagerank_nk, G, Gnk, nodes)
-        features[&#34;number_of_cliques&#34;] = (avgNodes, number_of_cliques_nk, G, Gnk, nodes)
-        features[&#34;node_clique_number&#34;] = (avgNodes, node_clique_number_nk, G, Gnk, nodes)
-        features[&#34;clustering&#34;] = (avgNodes, clustering_nk, G, Gnk, nodes)
-        features[&#34;triangles&#34;] = (avgNodes, triangles_nk, G, Gnk, nodes)
-        features[&#34;eccentricity&#34;] = (avgNodes, eccentricity_nk, G, Gnk, nodes)
-        features[&#34;average_shortest_path_length&#34;] = (avgNodes, average_shortest_path_length_nk, G, Gnk, nodes)
-
-        features = removedExcludedFeatures(features, self.params[&#34;exclude_features&#34;], self.params[&#34;include_features&#34;])
-        results.update(computeFeatures(features, self.params[&#34;verbose&#34;]))
-        #results.update(computeFeaturesParallelized(features, self.params[&#34;verbose&#34;]))
+    return(NodesFeatures.computeFeatures(self, G, features_nx, features_nk))</code></pre>
+</details>
+</dd>
+<dt id="BML.transform.graph_features.GraphFeatures.getFeatures"><code class="name flex">
+<span>def <span class="ident">getFeatures</span></span>(<span>self, G, nodes)</span>
+</code></dt>
+<dd>
+<div class="desc"></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def getFeatures(self, G, nodes):
     
-    return(results)</code></pre>
+    features_nx, features_nk = NodesFeatures.getFeatures(self, G, nodes)
+    
+    for k,v in features_nx.items():
+        features_nx[k] = (avgNodes,)+v
+    for k,v in features_nk.items():
+        features_nk[k] = (avgNodes,)+v
+    
+    self.eigenvalues={
+            &#34;laplacian&#34;:None,
+            &#34;adjacency&#34;:None,
+            &#34;normalized_laplacian&#34;:None,
+    }
+    
+    features_nx[&#34;nb_of_nodes&#34;] = (nb_of_nodes, G, nodes)
+    features_nx[&#34;nb_of_edges&#34;] = (nb_of_edges, G, nodes)
+    features_nx[&#34;diameter&#34;] = (diameter, G, nodes)
+    features_nx[&#34;assortativity&#34;] = (assortativity, G, nodes)
+    features_nx[&#34;largest_eigenvalue&#34;] = (largest_eigenvalue, G, nodes, self.eigenvalues)
+    features_nx[&#34;algebraic_connectivity&#34;] = (algebraic_connectivity, G, nodes, self.eigenvalues)
+    features_nx[&#34;effective_graph_resistance&#34;] = (effective_graph_resistance, G, nodes, self.eigenvalues)
+    features_nx[&#34;symmetry_ratio&#34;] = (symmetry_ratio, G, nodes, self.eigenvalues)
+    features_nx[&#34;natural_connectivity&#34;] = (natural_connectivity, G, nodes, self.eigenvalues)
+    features_nx[&#34;node_connectivity&#34;] = (node_connectivity, G, nodes)
+    features_nx[&#34;edge_connectivity&#34;] = (edge_connectivity, G, nodes)
+    features_nx[&#34;weighted_spectrum_3&#34;] = (weighted_spectrum, G, nodes, 3, self.eigenvalues)
+    features_nx[&#34;weighted_spectrum_4&#34;] = (weighted_spectrum, G, nodes, 4, self.eigenvalues)
+    features_nx[&#34;percolation_limit&#34;] = (percolation_limit, G, nodes)
+    features_nx[&#34;nb_spanning_trees&#34;] = (nb_spanning_trees, G, nodes, self.eigenvalues)
+    
+    return(features_nx, features_nk)</code></pre>
 </details>
 </dd>
 </dl>
@@ -788,7 +744,8 @@ setTimeout(() => input.focus(), 100);
 <li>
 <h4><code><a title="BML.transform.graph_features.GraphFeatures" href="#BML.transform.graph_features.GraphFeatures">GraphFeatures</a></code></h4>
 <ul class="">
-<li><code><a title="BML.transform.graph_features.GraphFeatures.transforms" href="#BML.transform.graph_features.GraphFeatures.transforms">transforms</a></code></li>
+<li><code><a title="BML.transform.graph_features.GraphFeatures.computeFeatures" href="#BML.transform.graph_features.GraphFeatures.computeFeatures">computeFeatures</a></code></li>
+<li><code><a title="BML.transform.graph_features.GraphFeatures.getFeatures" href="#BML.transform.graph_features.GraphFeatures.getFeatures">getFeatures</a></code></li>
 </ul>
 </li>
 </ul>

@@ -166,7 +166,7 @@ class BaseTransform(utils.BmlProcess):
         self.log("Folder: {}".format(self.outFolder))
         self.printParams()
         
-        if(self.exists() and self.params["SkipIfExist"]):
+        if(self.filePath!=None and self.exists() and self.params["SkipIfExist"]):
             self.log("Data exists, skipped")
         else:
             self.init()
@@ -205,14 +205,16 @@ class BaseTransformParallelized(BaseTransform):
 
     def computeSnapshot(self, t, routes, updatesParsed):
         self.pq.waitUntilFree()
+        self.data[t] = None
         self.pq.addProcess(target=self.runTransforms, args=(self.data, t, routes, updatesParsed))
         self.pq.runOnce()
+        print("computeSnapshot:",t)
 
     def compute(self):
 
         BaseTransform.compute(self)
-
-        self.pq.run()
+        
+        self.pq.join()
 
         for i in range(len(self.data)):
             if(i in self.data):

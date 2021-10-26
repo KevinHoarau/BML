@@ -194,7 +194,7 @@ class BaseTransform(utils.BmlProcess):
         self.log(&#34;Folder: {}&#34;.format(self.outFolder))
         self.printParams()
         
-        if(self.exists() and self.params[&#34;SkipIfExist&#34;]):
+        if(self.filePath!=None and self.exists() and self.params[&#34;SkipIfExist&#34;]):
             self.log(&#34;Data exists, skipped&#34;)
         else:
             self.init()
@@ -233,14 +233,16 @@ class BaseTransformParallelized(BaseTransform):
 
     def computeSnapshot(self, t, routes, updatesParsed):
         self.pq.waitUntilFree()
+        self.data[t] = None
         self.pq.addProcess(target=self.runTransforms, args=(self.data, t, routes, updatesParsed))
         self.pq.runOnce()
+        print(&#34;computeSnapshot:&#34;,t)
 
     def compute(self):
 
         BaseTransform.compute(self)
-
-        self.pq.run()
+        
+        self.pq.join()
 
         for i in range(len(self.data)):
             if(i in self.data):
@@ -485,7 +487,7 @@ def transform(transformation, primingFile, dataFile, params=None, outFolder=None
         self.log(&#34;Folder: {}&#34;.format(self.outFolder))
         self.printParams()
         
-        if(self.exists() and self.params[&#34;SkipIfExist&#34;]):
+        if(self.filePath!=None and self.exists() and self.params[&#34;SkipIfExist&#34;]):
             self.log(&#34;Data exists, skipped&#34;)
         else:
             self.init()
@@ -633,7 +635,7 @@ def transform(transformation, primingFile, dataFile, params=None, outFolder=None
     self.log(&#34;Folder: {}&#34;.format(self.outFolder))
     self.printParams()
     
-    if(self.exists() and self.params[&#34;SkipIfExist&#34;]):
+    if(self.filePath!=None and self.exists() and self.params[&#34;SkipIfExist&#34;]):
         self.log(&#34;Data exists, skipped&#34;)
     else:
         self.init()
@@ -835,14 +837,16 @@ def transform(transformation, primingFile, dataFile, params=None, outFolder=None
 
     def computeSnapshot(self, t, routes, updatesParsed):
         self.pq.waitUntilFree()
+        self.data[t] = None
         self.pq.addProcess(target=self.runTransforms, args=(self.data, t, routes, updatesParsed))
         self.pq.runOnce()
+        print(&#34;computeSnapshot:&#34;,t)
 
     def compute(self):
 
         BaseTransform.compute(self)
-
-        self.pq.run()
+        
+        self.pq.join()
 
         for i in range(len(self.data)):
             if(i in self.data):
@@ -863,7 +867,6 @@ def transform(transformation, primingFile, dataFile, params=None, outFolder=None
 <h3>Subclasses</h3>
 <ul class="hlist">
 <li><a title="BML.transform.graph.Graph" href="graph.html#BML.transform.graph.Graph">Graph</a></li>
-<li><a title="BML.transform.graph.WeightedGraph" href="graph.html#BML.transform.graph.WeightedGraph">WeightedGraph</a></li>
 <li><a title="BML.transform.hijackAnalyze.HijackAnalyze" href="hijackAnalyze.html#BML.transform.hijackAnalyze.HijackAnalyze">HijackAnalyze</a></li>
 <li><a title="BML.transform.hijackLabel.HijackLabel" href="hijackLabel.html#BML.transform.hijackLabel.HijackLabel">HijackLabel</a></li>
 </ul>
@@ -881,8 +884,8 @@ def transform(transformation, primingFile, dataFile, params=None, outFolder=None
 <pre><code class="python">def compute(self):
 
     BaseTransform.compute(self)
-
-    self.pq.run()
+    
+    self.pq.join()
 
     for i in range(len(self.data)):
         if(i in self.data):
@@ -901,8 +904,10 @@ def transform(transformation, primingFile, dataFile, params=None, outFolder=None
 </summary>
 <pre><code class="python">def computeSnapshot(self, t, routes, updatesParsed):
     self.pq.waitUntilFree()
+    self.data[t] = None
     self.pq.addProcess(target=self.runTransforms, args=(self.data, t, routes, updatesParsed))
-    self.pq.runOnce()</code></pre>
+    self.pq.runOnce()
+    print(&#34;computeSnapshot:&#34;,t)</code></pre>
 </details>
 </dd>
 <dt id="BML.transform.base_transform.BaseTransformParallelized.preProcess"><code class="name flex">
