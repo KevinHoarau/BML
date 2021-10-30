@@ -5,7 +5,7 @@ pandas
 ujson
 editdistance
 networkit
-decorator==4.3
+decorator
 networkx>=2.4
-modin[ray]
 ipywidgets
+karateclub
