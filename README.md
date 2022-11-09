@@ -23,11 +23,10 @@ Documentation is available online: https://kevinhoarau.github.io/BML/
 
 If our work is helpful to you, please kindly cite our paper as:
 ```
-@INPROCEEDINGS{hoarau2021bml,
-AUTHOR="Kevin Hoarau and Pierre-Ugo Tournoux and Tahiry Razafindralambo",
-TITLE="{BML: An Efficient and Versatile Tool for BGP Dataset Collection",
-BOOKTITLE="WS22 IEEE ICC 2021 the 3rd International Workshop on Data Driven
-Intelligence for Networks and Systems (WS22 ICC'21 Workshop - DDINS)",
-YEAR=2021,
+@inproceedings{hoarau2021bml,
+  title={BML: an efficient and versatile tool for BGP dataset collection},
+  author={Hoarau, Kevin and Tournoux, Pierre Ugo and Razafindralambo, Tahiry},
+  booktitle={2021 IEEE International Conference on Communications Workshops (ICC Workshops)},
+  year={2021}
 }
 ```
