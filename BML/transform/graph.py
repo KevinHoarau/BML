@@ -3,7 +3,6 @@ from BML.utils import ProcessingQueue
 
 import networkit as nk
 import networkx as nx
-import ipaddress as ip
 
 import numpy as np
 import pandas as pd
@@ -16,8 +15,8 @@ def buildWeightedGraph(routes):
 
     for prefix in routes.keys():
 
-        network = ip.ip_network(prefix)
-        nbIp = network.num_addresses
+        #nbIp = 2 ** (32-int(prefix.split('/')[1]))
+        nbIp = 1
 
         origins = []
         vertices = []
@@ -105,6 +104,9 @@ class Graph(BaseTransformParallelized):
     fileExtension = ".pickle"
 
     def __init__(self, primingFile, dataFile, params, outFolder, logFiles):
+        
+        self.params["relabel_nodes"] = False
+        self.params["weighted"] = False
 
         BaseTransformParallelized.__init__(self, primingFile, dataFile, params, outFolder, logFiles)
         self.prevT = 0
@@ -127,7 +129,13 @@ class Graph(BaseTransformParallelized):
             self.prevT = t+1
             
     def runBuildGraph(self, data, index, routes):
-        G = buildGraph(routes)
+        if(self.params["weighted"]):
+            G = buildWeightedGraph(routes)
+        else:
+            G = buildGraph(routes)
+            
+        if(self.params["relabel_nodes"]):
+            G = nx.convert_node_labels_to_integers(G, label_attribute="ASN")
         data[index] = G
         del routes
         return(None)
