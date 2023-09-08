@@ -236,7 +236,7 @@ class BaseTransformParallelized(BaseTransform):
         self.data[t] = None
         self.pq.addProcess(target=self.runTransforms, args=(self.data, t, routes, updatesParsed))
         self.pq.runOnce()
-        print(&#34;computeSnapshot:&#34;,t)
+        #print(&#34;computeSnapshot:&#34;,t)
 
     def compute(self):
 
@@ -516,6 +516,7 @@ def transform(transformation, primingFile, dataFile, params=None, outFolder=None
 </ul>
 <h3>Subclasses</h3>
 <ul class="hlist">
+<li><a title="BML.transform.as_features.ASFeatures" href="as_features.html#BML.transform.as_features.ASFeatures">ASFeatures</a></li>
 <li><a title="BML.transform.base_transform.BaseTransformParallelized" href="#BML.transform.base_transform.BaseTransformParallelized">BaseTransformParallelized</a></li>
 <li><a title="BML.transform.features.Features" href="features.html#BML.transform.features.Features">Features</a></li>
 <li><a title="BML.transform.routes_features.RoutesFeatures" href="routes_features.html#BML.transform.routes_features.RoutesFeatures">RoutesFeatures</a></li>
@@ -840,7 +841,7 @@ def transform(transformation, primingFile, dataFile, params=None, outFolder=None
         self.data[t] = None
         self.pq.addProcess(target=self.runTransforms, args=(self.data, t, routes, updatesParsed))
         self.pq.runOnce()
-        print(&#34;computeSnapshot:&#34;,t)
+        #print(&#34;computeSnapshot:&#34;,t)
 
     def compute(self):
 
@@ -907,7 +908,7 @@ def transform(transformation, primingFile, dataFile, params=None, outFolder=None
     self.data[t] = None
     self.pq.addProcess(target=self.runTransforms, args=(self.data, t, routes, updatesParsed))
     self.pq.runOnce()
-    print(&#34;computeSnapshot:&#34;,t)</code></pre>
+    #print(&#34;computeSnapshot:&#34;,t)</code></pre>
 </details>
 </dd>
 <dt id="BML.transform.base_transform.BaseTransformParallelized.preProcess"><code class="name flex">

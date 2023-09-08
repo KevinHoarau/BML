@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1" />
 <meta name="generator" content="pdoc 0.9.1" />
-<title>BML.transform API documentation</title>
+<title>BML.transform.temporalGraph API documentation</title>
 <meta name="description" content="" />
 <link rel="preload stylesheet" as="style" href="https://cdnjs.cloudflare.com/ajax/libs/10up-sanitize.css/11.0.1/sanitize.min.css" integrity="sha256-PK9q560IAAa6WVRRh76LtCaI8pjTJ2z11v0miyNNjrs=" crossorigin>
 <link rel="preload stylesheet" as="style" href="https://cdnjs.cloudflare.com/ajax/libs/10up-sanitize.css/11.0.1/typography.min.css" integrity="sha256-7l/o7C8jubJiy74VsKTidCy1yBkRtiUGbVkYBylBqUg=" crossorigin>
@@ -19,90 +19,209 @@
 <main>
 <article id="content">
 <header>
-<h1 class="title">Module <code>BML.transform</code></h1>
+<h1 class="title">Module <code>BML.transform.temporalGraph</code></h1>
 </header>
 <section id="section-intro">
 <details class="source">
 <summary>
 <span>Expand source code</span>
 </summary>
-<pre><code class="python">from .base_transform import BaseTransform, BaseTransformParallelized
-from .features import Features
-from .graph import Graph
-#from .temporalGraph import TemporalGraph
-#from .graph2vec import Graph2Vec
-#from .pyg_graph import PyGgraph
-from .nodes_features import NodesFeatures
-from .graph_features import GraphFeatures
-from .routes_features import RoutesFeatures
-from .hijackLabel import HijackLabel
-from .hijackAnalyze import HijackAnalyze
-#from .as_features import ASFeatures
-from .dataset_transformation import DatasetTransformation</code></pre>
+<pre><code class="python">from .graph import Graph
+import networkx as nx
+import torch
+
+class TemporalGraph(Graph):
+
+    def __init__(self, primingFile, dataFile, params, outFolder, logFiles):
+        
+        params[&#34;relabel_nodes&#34;] = False
+        params[&#34;weighted&#34;] = True
+        
+        Graph.__init__(self, primingFile, dataFile, params, outFolder, logFiles)
+    
+    def postProcess(self, G):
+
+        nodes = set()
+        for g in G:
+            for n in list(g.nodes):
+                nodes.add(n)
+        nodes = list(nodes)
+
+        mapping = {}
+        i = 0
+        for n in nodes:
+            mapping[n]=i
+            i += 1
+
+        data = {
+            &#34;ASN&#34;:nodes,
+            &#34;edge_index&#34;:[],
+            &#34;edge_attr&#34;:[],
+            &#34;x&#34;:[]
+        }
+
+        for g in G:
+
+            g_new = nx.relabel_nodes(g, mapping, copy=True)
+            edges = list(g_new.edges)
+
+            edge_index = torch.LongTensor(edges)
+            edge_attr = torch.tensor([[g_new[u][v][&#34;nbIp&#34;]] for u,v in edges])
+
+            x = []
+            for i in range(len(nodes)):
+                if(i in g_new.nodes):
+                    x.append([g_new.nodes[i][&#34;nbIp&#34;]])
+                else:
+                    x.append([0])
+            x = torch.tensor(x)
+
+            data[&#34;edge_index&#34;].append(edge_index)
+            data[&#34;edge_attr&#34;].append(edge_attr)
+            data[&#34;x&#34;].append(x)
+
+        return(data)
+
+        
+    </code></pre>
 </details>
 </section>
 <section>
-<h2 class="section-title" id="header-submodules">Sub-modules</h2>
+</section>
+<section>
+</section>
+<section>
+</section>
+<section>
+<h2 class="section-title" id="header-classes">Classes</h2>
 <dl>
-<dt><code class="name"><a title="BML.transform.as_features" href="as_features.html">BML.transform.as_features</a></code></dt>
+<dt id="BML.transform.temporalGraph.TemporalGraph"><code class="flex name class">
+<span>class <span class="ident">TemporalGraph</span></span>
+<span>(</span><span>primingFile, dataFile, params, outFolder, logFiles)</span>
+</code></dt>
 <dd>
 <div class="desc"></div>
-</dd>
-<dt><code class="name"><a title="BML.transform.base_transform" href="base_transform.html">BML.transform.base_transform</a></code></dt>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">class TemporalGraph(Graph):
+
+    def __init__(self, primingFile, dataFile, params, outFolder, logFiles):
+        
+        params[&#34;relabel_nodes&#34;] = False
+        params[&#34;weighted&#34;] = True
+        
+        Graph.__init__(self, primingFile, dataFile, params, outFolder, logFiles)
+    
+    def postProcess(self, G):
+
+        nodes = set()
+        for g in G:
+            for n in list(g.nodes):
+                nodes.add(n)
+        nodes = list(nodes)
+
+        mapping = {}
+        i = 0
+        for n in nodes:
+            mapping[n]=i
+            i += 1
+
+        data = {
+            &#34;ASN&#34;:nodes,
+            &#34;edge_index&#34;:[],
+            &#34;edge_attr&#34;:[],
+            &#34;x&#34;:[]
+        }
+
+        for g in G:
+
+            g_new = nx.relabel_nodes(g, mapping, copy=True)
+            edges = list(g_new.edges)
+
+            edge_index = torch.LongTensor(edges)
+            edge_attr = torch.tensor([[g_new[u][v][&#34;nbIp&#34;]] for u,v in edges])
+
+            x = []
+            for i in range(len(nodes)):
+                if(i in g_new.nodes):
+                    x.append([g_new.nodes[i][&#34;nbIp&#34;]])
+                else:
+                    x.append([0])
+            x = torch.tensor(x)
+
+            data[&#34;edge_index&#34;].append(edge_index)
+            data[&#34;edge_attr&#34;].append(edge_attr)
+            data[&#34;x&#34;].append(x)
+
+        return(data)</code></pre>
+</details>
+<h3>Ancestors</h3>
+<ul class="hlist">
+<li><a title="BML.transform.graph.Graph" href="graph.html#BML.transform.graph.Graph">Graph</a></li>
+<li><a title="BML.transform.base_transform.BaseTransformParallelized" href="base_transform.html#BML.transform.base_transform.BaseTransformParallelized">BaseTransformParallelized</a></li>
+<li><a title="BML.transform.base_transform.BaseTransform" href="base_transform.html#BML.transform.base_transform.BaseTransform">BaseTransform</a></li>
+<li><a title="BML.utils.bml_process.BmlProcess" href="../utils/bml_process.html#BML.utils.bml_process.BmlProcess">BmlProcess</a></li>
+</ul>
+<h3>Methods</h3>
+<dl>
+<dt id="BML.transform.temporalGraph.TemporalGraph.postProcess"><code class="name flex">
+<span>def <span class="ident">postProcess</span></span>(<span>self, G)</span>
+</code></dt>
 <dd>
 <div class="desc"></div>
-</dd>
-<dt><code class="name"><a title="BML.transform.dataset_transformation" href="dataset_transformation.html">BML.transform.dataset_transformation</a></code></dt>
-<dd>
-<div class="desc"></div>
-</dd>
-<dt><code class="name"><a title="BML.transform.features" href="features.html">BML.transform.features</a></code></dt>
-<dd>
-<div class="desc"></div>
-</dd>
-<dt><code class="name"><a title="BML.transform.graph" href="graph.html">BML.transform.graph</a></code></dt>
-<dd>
-<div class="desc"></div>
-</dd>
-<dt><code class="name"><a title="BML.transform.graph2vec" href="graph2vec.html">BML.transform.graph2vec</a></code></dt>
-<dd>
-<div class="desc"></div>
-</dd>
-<dt><code class="name"><a title="BML.transform.graph_features" href="graph_features.html">BML.transform.graph_features</a></code></dt>
-<dd>
-<div class="desc"></div>
-</dd>
-<dt><code class="name"><a title="BML.transform.hijackAnalyze" href="hijackAnalyze.html">BML.transform.hijackAnalyze</a></code></dt>
-<dd>
-<div class="desc"></div>
-</dd>
-<dt><code class="name"><a title="BML.transform.hijackLabel" href="hijackLabel.html">BML.transform.hijackLabel</a></code></dt>
-<dd>
-<div class="desc"></div>
-</dd>
-<dt><code class="name"><a title="BML.transform.nodes_features" href="nodes_features.html">BML.transform.nodes_features</a></code></dt>
-<dd>
-<div class="desc"></div>
-</dd>
-<dt><code class="name"><a title="BML.transform.pyg_graph" href="pyg_graph.html">BML.transform.pyg_graph</a></code></dt>
-<dd>
-<div class="desc"></div>
-</dd>
-<dt><code class="name"><a title="BML.transform.routes_features" href="routes_features.html">BML.transform.routes_features</a></code></dt>
-<dd>
-<div class="desc"></div>
-</dd>
-<dt><code class="name"><a title="BML.transform.temporalGraph" href="temporalGraph.html">BML.transform.temporalGraph</a></code></dt>
-<dd>
-<div class="desc"></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def postProcess(self, G):
+
+    nodes = set()
+    for g in G:
+        for n in list(g.nodes):
+            nodes.add(n)
+    nodes = list(nodes)
+
+    mapping = {}
+    i = 0
+    for n in nodes:
+        mapping[n]=i
+        i += 1
+
+    data = {
+        &#34;ASN&#34;:nodes,
+        &#34;edge_index&#34;:[],
+        &#34;edge_attr&#34;:[],
+        &#34;x&#34;:[]
+    }
+
+    for g in G:
+
+        g_new = nx.relabel_nodes(g, mapping, copy=True)
+        edges = list(g_new.edges)
+
+        edge_index = torch.LongTensor(edges)
+        edge_attr = torch.tensor([[g_new[u][v][&#34;nbIp&#34;]] for u,v in edges])
+
+        x = []
+        for i in range(len(nodes)):
+            if(i in g_new.nodes):
+                x.append([g_new.nodes[i][&#34;nbIp&#34;]])
+            else:
+                x.append([0])
+        x = torch.tensor(x)
+
+        data[&#34;edge_index&#34;].append(edge_index)
+        data[&#34;edge_attr&#34;].append(edge_attr)
+        data[&#34;x&#34;].append(x)
+
+    return(data)</code></pre>
+</details>
 </dd>
 </dl>
-</section>
-<section>
-</section>
-<section>
-</section>
-<section>
+</dd>
+</dl>
 </section>
 </article>
 <nav id="sidebar">
@@ -161,24 +280,17 @@ setTimeout(() => input.focus(), 100);
 <ul id="index">
 <li><h3>Super-module</h3>
 <ul>
-<li><code><a title="BML" href="../index.html">BML</a></code></li>
+<li><code><a title="BML.transform" href="index.html">BML.transform</a></code></li>
 </ul>
 </li>
-<li><h3><a href="#header-submodules">Sub-modules</a></h3>
+<li><h3><a href="#header-classes">Classes</a></h3>
 <ul>
-<li><code><a title="BML.transform.as_features" href="as_features.html">BML.transform.as_features</a></code></li>
-<li><code><a title="BML.transform.base_transform" href="base_transform.html">BML.transform.base_transform</a></code></li>
-<li><code><a title="BML.transform.dataset_transformation" href="dataset_transformation.html">BML.transform.dataset_transformation</a></code></li>
-<li><code><a title="BML.transform.features" href="features.html">BML.transform.features</a></code></li>
-<li><code><a title="BML.transform.graph" href="graph.html">BML.transform.graph</a></code></li>
-<li><code><a title="BML.transform.graph2vec" href="graph2vec.html">BML.transform.graph2vec</a></code></li>
-<li><code><a title="BML.transform.graph_features" href="graph_features.html">BML.transform.graph_features</a></code></li>
-<li><code><a title="BML.transform.hijackAnalyze" href="hijackAnalyze.html">BML.transform.hijackAnalyze</a></code></li>
-<li><code><a title="BML.transform.hijackLabel" href="hijackLabel.html">BML.transform.hijackLabel</a></code></li>
-<li><code><a title="BML.transform.nodes_features" href="nodes_features.html">BML.transform.nodes_features</a></code></li>
-<li><code><a title="BML.transform.pyg_graph" href="pyg_graph.html">BML.transform.pyg_graph</a></code></li>
-<li><code><a title="BML.transform.routes_features" href="routes_features.html">BML.transform.routes_features</a></code></li>
-<li><code><a title="BML.transform.temporalGraph" href="temporalGraph.html">BML.transform.temporalGraph</a></code></li>
+<li>
+<h4><code><a title="BML.transform.temporalGraph.TemporalGraph" href="#BML.transform.temporalGraph.TemporalGraph">TemporalGraph</a></code></h4>
+<ul class="">
+<li><code><a title="BML.transform.temporalGraph.TemporalGraph.postProcess" href="#BML.transform.temporalGraph.TemporalGraph.postProcess">postProcess</a></code></li>
+</ul>
+</li>
 </ul>
 </li>
 </ul>

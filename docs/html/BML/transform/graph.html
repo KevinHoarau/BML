@@ -31,7 +31,6 @@ from BML.utils import ProcessingQueue
 
 import networkit as nk
 import networkx as nx
-import ipaddress as ip
 
 import numpy as np
 import pandas as pd
@@ -44,8 +43,8 @@ def buildWeightedGraph(routes):
 
     for prefix in routes.keys():
 
-        network = ip.ip_network(prefix)
-        nbIp = network.num_addresses
+        #nbIp = 2 ** (32-int(prefix.split(&#39;/&#39;)[1]))
+        nbIp = 1
 
         origins = []
         vertices = []
@@ -133,6 +132,9 @@ class Graph(BaseTransformParallelized):
     fileExtension = &#34;.pickle&#34;
 
     def __init__(self, primingFile, dataFile, params, outFolder, logFiles):
+        
+        self.params[&#34;relabel_nodes&#34;] = False
+        self.params[&#34;weighted&#34;] = False
 
         BaseTransformParallelized.__init__(self, primingFile, dataFile, params, outFolder, logFiles)
         self.prevT = 0
@@ -155,7 +157,13 @@ class Graph(BaseTransformParallelized):
             self.prevT = t+1
             
     def runBuildGraph(self, data, index, routes):
-        G = buildGraph(routes)
+        if(self.params[&#34;weighted&#34;]):
+            G = buildWeightedGraph(routes)
+        else:
+            G = buildGraph(routes)
+            
+        if(self.params[&#34;relabel_nodes&#34;]):
+            G = nx.convert_node_labels_to_integers(G, label_attribute=&#34;ASN&#34;)
         data[index] = G
         del routes
         return(None)
@@ -236,8 +244,8 @@ class Graph(BaseTransformParallelized):
 
     for prefix in routes.keys():
 
-        network = ip.ip_network(prefix)
-        nbIp = network.num_addresses
+        #nbIp = 2 ** (32-int(prefix.split(&#39;/&#39;)[1]))
+        nbIp = 1
 
         origins = []
         vertices = []
@@ -311,6 +319,9 @@ class Graph(BaseTransformParallelized):
     fileExtension = &#34;.pickle&#34;
 
     def __init__(self, primingFile, dataFile, params, outFolder, logFiles):
+        
+        self.params[&#34;relabel_nodes&#34;] = False
+        self.params[&#34;weighted&#34;] = False
 
         BaseTransformParallelized.__init__(self, primingFile, dataFile, params, outFolder, logFiles)
         self.prevT = 0
@@ -333,7 +344,13 @@ class Graph(BaseTransformParallelized):
             self.prevT = t+1
             
     def runBuildGraph(self, data, index, routes):
-        G = buildGraph(routes)
+        if(self.params[&#34;weighted&#34;]):
+            G = buildWeightedGraph(routes)
+        else:
+            G = buildGraph(routes)
+            
+        if(self.params[&#34;relabel_nodes&#34;]):
+            G = nx.convert_node_labels_to_integers(G, label_attribute=&#34;ASN&#34;)
         data[index] = G
         del routes
         return(None)
@@ -359,7 +376,10 @@ class Graph(BaseTransformParallelized):
 </ul>
 <h3>Subclasses</h3>
 <ul class="hlist">
+<li><a title="BML.transform.graph2vec.Graph2Vec" href="graph2vec.html#BML.transform.graph2vec.Graph2Vec">Graph2Vec</a></li>
 <li><a title="BML.transform.nodes_features.NodesFeatures" href="nodes_features.html#BML.transform.nodes_features.NodesFeatures">NodesFeatures</a></li>
+<li><a title="BML.transform.pyg_graph.PyGgraph" href="pyg_graph.html#BML.transform.pyg_graph.PyGgraph">PyGgraph</a></li>
+<li><a title="BML.transform.temporalGraph.TemporalGraph" href="temporalGraph.html#BML.transform.temporalGraph.TemporalGraph">TemporalGraph</a></li>
 </ul>
 <h3>Class variables</h3>
 <dl>
@@ -411,7 +431,13 @@ class Graph(BaseTransformParallelized):
 <span>Expand source code</span>
 </summary>
 <pre><code class="python">def runBuildGraph(self, data, index, routes):
-    G = buildGraph(routes)
+    if(self.params[&#34;weighted&#34;]):
+        G = buildWeightedGraph(routes)
+    else:
+        G = buildGraph(routes)
+        
+    if(self.params[&#34;relabel_nodes&#34;]):
+        G = nx.convert_node_labels_to_integers(G, label_attribute=&#34;ASN&#34;)
     data[index] = G
     del routes
     return(None)</code></pre>
