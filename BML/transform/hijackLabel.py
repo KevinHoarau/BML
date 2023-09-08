@@ -11,13 +11,13 @@ class HijackLabel(BaseTransformParallelized):
         BaseTransformParallelized.__init__(self, primingFile, dataFile, params, outFolder, logFiles)
 
     def transforms(self, index, routes, updates):
-
-        label = {"Y":0}
+        
+        hj_origin = 0
+        hj_path = 0
 
         if(not self.params["hijack"] is None):
 
             hj_prefix = self.params["hijack"]["prefix"]
-            hj_type = self.params["hijack"]["type"]
             hj_as = self.params["hijack"]["hijack_as"]
 
             if(hj_prefix in routes):
@@ -28,14 +28,12 @@ class HijackLabel(BaseTransformParallelized):
 
                             path = routes[hj_prefix][collector][peer].split(" ")
 
-                            if(hj_type=="origin_change"):
+                            if(str(path[-1])==str(hj_as)):
+                                hj_origin = 1
 
-                                if(str(path[-1])==str(hj_as)):
-                                    label = {"Y":1}
-
-                            if(hj_type=="forged_as_path"):
-
-                                if(str(hj_as) in path):
-                                    label = {"Y":1}
+                            if(str(hj_as) in path[:-1]):
+                                hj_path = 1
+                                
+        label = {"origin":hj_origin, "path":hj_path}
 
         return(label)

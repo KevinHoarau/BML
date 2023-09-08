@@ -208,7 +208,7 @@ class BaseTransformParallelized(BaseTransform):
         self.data[t] = None
         self.pq.addProcess(target=self.runTransforms, args=(self.data, t, routes, updatesParsed))
         self.pq.runOnce()
-        print("computeSnapshot:",t)
+        #print("computeSnapshot:",t)
 
     def compute(self):
 
