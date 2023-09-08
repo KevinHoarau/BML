@@ -9,7 +9,7 @@ In this getting started guide, we will implement the use case presented in the B
 ```console
 $ git clone https://github.com/KevinHoarau/BML.git
 $ cd BML
-$ python setup.py install
+$ pip install . -v
 ```
 
 ## Dataset
