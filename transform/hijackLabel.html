@@ -39,13 +39,13 @@ class HijackLabel(BaseTransformParallelized):
         BaseTransformParallelized.__init__(self, primingFile, dataFile, params, outFolder, logFiles)
 
     def transforms(self, index, routes, updates):
-
-        label = {&#34;Y&#34;:0}
+        
+        hj_origin = 0
+        hj_path = 0
 
         if(not self.params[&#34;hijack&#34;] is None):
 
             hj_prefix = self.params[&#34;hijack&#34;][&#34;prefix&#34;]
-            hj_type = self.params[&#34;hijack&#34;][&#34;type&#34;]
             hj_as = self.params[&#34;hijack&#34;][&#34;hijack_as&#34;]
 
             if(hj_prefix in routes):
@@ -56,15 +56,13 @@ class HijackLabel(BaseTransformParallelized):
 
                             path = routes[hj_prefix][collector][peer].split(&#34; &#34;)
 
-                            if(hj_type==&#34;origin_change&#34;):
+                            if(str(path[-1])==str(hj_as)):
+                                hj_origin = 1
 
-                                if(str(path[-1])==str(hj_as)):
-                                    label = {&#34;Y&#34;:1}
-
-                            if(hj_type==&#34;forged_as_path&#34;):
-
-                                if(str(hj_as) in path):
-                                    label = {&#34;Y&#34;:1}
+                            if(str(hj_as) in path[:-1]):
+                                hj_path = 1
+                                
+        label = {&#34;origin&#34;:hj_origin, &#34;path&#34;:hj_path}
 
         return(label)</code></pre>
 </details>
@@ -99,13 +97,13 @@ class HijackLabel(BaseTransformParallelized):
         BaseTransformParallelized.__init__(self, primingFile, dataFile, params, outFolder, logFiles)
 
     def transforms(self, index, routes, updates):
-
-        label = {&#34;Y&#34;:0}
+        
+        hj_origin = 0
+        hj_path = 0
 
         if(not self.params[&#34;hijack&#34;] is None):
 
             hj_prefix = self.params[&#34;hijack&#34;][&#34;prefix&#34;]
-            hj_type = self.params[&#34;hijack&#34;][&#34;type&#34;]
             hj_as = self.params[&#34;hijack&#34;][&#34;hijack_as&#34;]
 
             if(hj_prefix in routes):
@@ -116,15 +114,13 @@ class HijackLabel(BaseTransformParallelized):
 
                             path = routes[hj_prefix][collector][peer].split(&#34; &#34;)
 
-                            if(hj_type==&#34;origin_change&#34;):
+                            if(str(path[-1])==str(hj_as)):
+                                hj_origin = 1
 
-                                if(str(path[-1])==str(hj_as)):
-                                    label = {&#34;Y&#34;:1}
-
-                            if(hj_type==&#34;forged_as_path&#34;):
-
-                                if(str(hj_as) in path):
-                                    label = {&#34;Y&#34;:1}
+                            if(str(hj_as) in path[:-1]):
+                                hj_path = 1
+                                
+        label = {&#34;origin&#34;:hj_origin, &#34;path&#34;:hj_path}
 
         return(label)</code></pre>
 </details>
@@ -153,13 +149,13 @@ class HijackLabel(BaseTransformParallelized):
 <span>Expand source code</span>
 </summary>
 <pre><code class="python">def transforms(self, index, routes, updates):
-
-    label = {&#34;Y&#34;:0}
+    
+    hj_origin = 0
+    hj_path = 0
 
     if(not self.params[&#34;hijack&#34;] is None):
 
         hj_prefix = self.params[&#34;hijack&#34;][&#34;prefix&#34;]
-        hj_type = self.params[&#34;hijack&#34;][&#34;type&#34;]
         hj_as = self.params[&#34;hijack&#34;][&#34;hijack_as&#34;]
 
         if(hj_prefix in routes):
@@ -170,15 +166,13 @@ class HijackLabel(BaseTransformParallelized):
 
                         path = routes[hj_prefix][collector][peer].split(&#34; &#34;)
 
-                        if(hj_type==&#34;origin_change&#34;):
+                        if(str(path[-1])==str(hj_as)):
+                            hj_origin = 1
 
-                            if(str(path[-1])==str(hj_as)):
-                                label = {&#34;Y&#34;:1}
-
-                        if(hj_type==&#34;forged_as_path&#34;):
-
-                            if(str(hj_as) in path):
-                                label = {&#34;Y&#34;:1}
+                        if(str(hj_as) in path[:-1]):
+                            hj_path = 1
+                            
+    label = {&#34;origin&#34;:hj_origin, &#34;path&#34;:hj_path}
 
     return(label)</code></pre>
 </details>
