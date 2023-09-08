@@ -8,7 +8,7 @@ This is the implemention of the work presented in our paper:
 ## Installation
 
 ```console
-$ python setup.py install
+$ pip install . -v
 ```
 
 ## Getting started

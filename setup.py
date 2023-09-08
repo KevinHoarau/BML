@@ -5,7 +5,7 @@ import subprocess, os, sys
 class CustomInstallCommand(install):
 	def run(self):
 		print("Running bgpstreamm install script")
-		process = subprocess.Popen(["sudo sh bgpstream_install.sh"], shell=True)
+		process = subprocess.Popen(["sh bgpstream_install.sh"], shell=True)
 		process.wait()
 		print("bgpstreamm install done")
 		
