@@ -27,7 +27,10 @@ class BmlProcess():
         utils.printAndLog(text, self.logFiles)
                 
     def printProgress(self, currentProgress):
-        progress = int(currentProgress -self.startProgress)*100//(self.endProgress-self.startProgress)
+        if(self.startProgress<self.endProgress):
+            progress = int(currentProgress -self.startProgress)*100//(self.endProgress-self.startProgress)
+        else:
+            progress = 0
         if((progress<=10 and progress!=self.progressPrev) or progress-self.progressPrev>=5):
             self.log("Progress: "+ str(progress) + "%")
             self.progressPrev = progress
